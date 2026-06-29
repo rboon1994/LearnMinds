@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
 
+import { Icon } from './Icon';
+import type { IconName } from './Icon';
+
 type AlertType = 'error' | 'success' | 'warning' | 'info';
 
 type AlertProps = {
@@ -7,13 +10,14 @@ type AlertProps = {
   title?: string;
   children: ReactNode;
   className?: string;
+  icon?: ReactNode;
 };
 
 const config: Record<AlertType, {
   accent: string;
   glass: string;
   iconWrap: string;
-  iconPath: string;
+  iconName: IconName;
   titleColor: string;
   bodyColor: string;
 }> = {
@@ -21,7 +25,7 @@ const config: Record<AlertType, {
     accent:    'from-rose-500 to-red-500',
     glass:     'bg-rose-50/70 border-rose-200/60',
     iconWrap:  'bg-gradient-to-br from-rose-500 to-red-500',
-    iconPath:  'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    iconName:  'error',
     titleColor:'text-rose-900',
     bodyColor: 'text-rose-700',
   },
@@ -29,7 +33,7 @@ const config: Record<AlertType, {
     accent:    'from-green-400 to-teal-500',
     glass:     'bg-emerald-50/70 border-emerald-200/60',
     iconWrap:  'bg-gradient-to-br from-green-400 to-teal-500',
-    iconPath:  'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
+    iconName:  'check-circle',
     titleColor:'text-emerald-900',
     bodyColor: 'text-emerald-700',
   },
@@ -37,7 +41,7 @@ const config: Record<AlertType, {
     accent:    'from-amber-400 to-orange-400',
     glass:     'bg-amber-50/70 border-amber-200/60',
     iconWrap:  'bg-gradient-to-br from-amber-400 to-orange-400',
-    iconPath:  'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
+    iconName:  'warning',
     titleColor:'text-amber-900',
     bodyColor: 'text-amber-700',
   },
@@ -45,25 +49,23 @@ const config: Record<AlertType, {
     accent:    'from-sky-400 to-blue-500',
     glass:     'bg-sky-50/70 border-sky-200/60',
     iconWrap:  'bg-gradient-to-br from-sky-400 to-blue-500',
-    iconPath:  'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    iconName:  'info',
     titleColor:'text-sky-900',
     bodyColor: 'text-sky-700',
   },
 };
 
-export function Alert({ type, title, children, className = '' }: AlertProps) {
+export function Alert({ type, title, children, className = '', icon }: AlertProps) {
   const c = config[type];
 
   return (
     <div className={`relative flex gap-3 overflow-hidden rounded-xl border backdrop-blur-sm px-4 py-3.5 ${c.glass} ${className}`}>
       {/* gradient left accent bar */}
-      <div className={`absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b ${c.accent}`} />
+      <div className={`absolute left-0 top-0 bottom-0 w-1 bg-linear-to-b ${c.accent}`} />
 
       {/* icon badge */}
-      <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${c.iconWrap}`}>
-        <svg className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d={c.iconPath} />
-        </svg>
+      <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white ${c.iconWrap}`}>
+        {icon ?? <Icon name={c.iconName} className="h-3.5 w-3.5" />}
       </div>
 
       {/* content */}

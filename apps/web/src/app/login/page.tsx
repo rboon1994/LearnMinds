@@ -7,21 +7,20 @@ import { useRouter } from 'next/navigation';
 import { AuthFooterLink, AuthHeader, AuthLayout } from '@/components/auth/AuthLayout';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
+import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { PasswordInput } from '@/components/ui/PasswordInput';
+import { apiUrl } from '@/lib/api';
 
 type LoginFormData = {
   email: string;
   password: string;
 };
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-
 export default function LoginPage() {
   const [formData, setFormData] = useState<LoginFormData>({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const router = useRouter();
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -49,7 +48,6 @@ export default function LoginPage() {
 
     setIsLoading(true);
     setError('');
-    setSuccess('');
 
     try {
       const response = await fetch(`${apiUrl}/auth/login`, {
@@ -67,9 +65,11 @@ export default function LoginPage() {
       if (data.access_token) {
         localStorage.setItem('token', data.access_token);
         router.push('/learn');
+      } else {
+        throw new Error('Login failed. Please try again.');
       }
-    } catch {
-      setError('Login failed. Please check your email and password.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed. Please check your email and password.');
     } finally {
       setIsLoading(false);
     }
@@ -121,8 +121,7 @@ export default function LoginPage() {
             </a>
           </div>
 
-          {error && <Alert type="error">{error}</Alert>}
-          {success && <Alert type="success">{success}</Alert>}
+          {error && <Alert type="error" icon={<Icon name="error" className="h-4 w-4" />}>{error}</Alert>}
 
           <Button
             className="w-full py-3.5 text-base font-semibold shadow-lg"
