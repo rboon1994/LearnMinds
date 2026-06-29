@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { BrandLogo } from "@/components/auth/BrandLogo";
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -15,7 +15,7 @@ export default function Home() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-2">
               <div >
-                <Image src="/Learnminds-Logo-Hor-Web.png" alt="LearnMinds Logo" width={240} height={80} />
+                <BrandLogo />
               </div>
             </div>
             
