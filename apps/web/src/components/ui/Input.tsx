@@ -79,8 +79,8 @@ export function Input({
         <input
           aria-describedby={error || helperText ? `${id}-description` : undefined}
           aria-invalid={error ? true : undefined}
-          className={`block w-full rounded-xl border bg-white py-2.5 text-slate-900 placeholder-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 ${
-            error ? 'border-red-300 focus:ring-red-500' : 'border-slate-300 focus:ring-indigo-500'
+          className={`block w-full rounded-xl border bg-white py-2.5 text-slate-900 placeholder-slate-400 transition-all focus:outline-none focus:ring-2 ${
+            error ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-slate-300 focus:bg-white focus:border-teal-400 focus:ring-4 focus:ring-teal-400/10'
           } ${hasLeftIcon ? 'pl-10' : 'pl-3'} ${hasRightElement ? 'pr-10' : 'pr-3'} ${className}`}
           id={id}
           {...props}

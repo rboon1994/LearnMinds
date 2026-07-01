@@ -54,6 +54,19 @@ export class AuthService {
     return { access_token: this.sign(user) };
   }
 
+  async getMe(userId: string) {
+    return this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        tenant: { select: { id: true, name: true } },
+      },
+    });
+  }
+
   private sign(user: { id: string; tenantId: string; email: string; role: string }) {
     return this.jwt.sign({ sub: user.id, tenantId: user.tenantId, email: user.email, role: user.role });
   }

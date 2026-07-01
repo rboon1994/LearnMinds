@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Request, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
 import { RegisterDto } from './dto/register.dto';
@@ -20,5 +20,10 @@ export class AuthController {
   @Post('login')
   login(@Request() req: { user: { id: string; tenantId: string; email: string; role: string } }) {
     return this.authService.login(req.user);
+  }
+
+  @Get('me')
+  me(@Request() req: { user: { userId: string } }) {
+    return this.authService.getMe(req.user.userId);
   }
 }
