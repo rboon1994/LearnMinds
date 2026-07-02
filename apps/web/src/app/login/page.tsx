@@ -1,7 +1,7 @@
 'use client';
 
 import type { ChangeEvent } from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { AuthFooterLink, AuthHeader, AuthLayout } from '@/components/auth/AuthLayout';
@@ -11,6 +11,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { apiUrl } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 type LoginFormData = {
   email: string;
@@ -18,10 +19,15 @@ type LoginFormData = {
 };
 
 export default function LoginPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [formData, setFormData] = useState<LoginFormData>({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) router.replace('/learn');
+  }, [user, loading, router]);
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -64,7 +70,7 @@ export default function LoginPage() {
       const data = await response.json();
       if (data.access_token) {
         localStorage.setItem('token', data.access_token);
-        router.push('/learn');
+        window.location.replace('/learn');
       } else {
         throw new Error('Login failed. Please try again.');
       }

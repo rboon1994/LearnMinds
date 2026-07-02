@@ -1,22 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { Icon, type IconName } from '@/components/ui/Icon';
-
-export const MAIN_NAV: NavItem[] = [
-  { id: 'learn', name: 'Learn', href: '/learn', icon: 'book' },
-  { id: 'admin', name: 'Admin', href: '/admin', icon: 'cog' },
-];
-
-export interface NavItem {
-  id: string;
-  name: string;
-  icon: IconName;
-  href?: string;
-}
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface NavUser {
   name: string;
@@ -25,21 +14,14 @@ export interface NavUser {
 }
 
 interface NavigationProps {
-  items: NavItem[];
-  activeId: string;
-  onNavigate: (id: string) => void;
   user: NavUser;
   onLogout?: () => void;
-  /** Controlled by the parent — set true when the hamburger button is clicked */
   mobileOpen?: boolean;
   onMobileClose?: () => void;
   showUpgradeCard?: boolean;
 }
 
 export function Navigation({
-  items,
-  activeId,
-  onNavigate,
   user,
   onLogout,
   mobileOpen = false,
@@ -48,6 +30,15 @@ export function Navigation({
 }: NavigationProps) {
   const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+  const { user: authUser } = useAuth();
+
+  const items = (authUser?.navItems ?? []).map((n) => ({
+    id: n.id,
+    name: n.name,
+    href: n.href,
+    icon: n.icon as IconName,
+  }));
 
   return (
     <>
@@ -77,24 +68,12 @@ export function Navigation({
               className="flex w-full justify-center"
               aria-label="Expand sidebar"
             >
-              <Image
-                src="/Learnminds-Icon Web.png"
-                alt="LearnMinds"
-                width={35}
-                height={35}
-                priority
-              />
+              <Image src="/Learnminds-Icon Web.png" alt="LearnMinds" width={35} height={35} priority />
             </button>
           ) : (
             <>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="overflow-hidden pr-2">
-                <Image
-                  src="/Learnminds-Logo-Hor-Web.png"
-                  alt="LearnMinds"
-                  width={210}
-                  height={70}
-                  priority
-                />
+                <Image src="/Learnminds-Logo-Hor-Web.png" alt="LearnMinds" width={210} height={70} priority />
               </motion.div>
               <button
                 onClick={() => setCollapsed(true)}
@@ -118,14 +97,14 @@ export function Navigation({
             {items.map((item) => (
               <button
                 key={item.id}
-                onClick={() => { onNavigate(item.id); if (item.href) router.push(item.href); }}
+                onClick={() => { if (item.href) router.push(item.href); }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative group ${
-                  activeId === item.id
+                  pathname === item.href
                     ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
-                {activeId === item.id && (
+                {pathname === item.href && (
                   <motion.div
                     layoutId="activeIndicator"
                     className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-indigo-600 rounded-r-full"
@@ -134,7 +113,7 @@ export function Navigation({
                 <Icon
                   name={item.icon}
                   className={`w-5 h-5 shrink-0 ${
-                    activeId === item.id ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600'
+                    pathname === item.href ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600'
                   }`}
                 />
                 {!collapsed && <span className="flex-1 text-left whitespace-nowrap">{item.name}</span>}
@@ -144,7 +123,6 @@ export function Navigation({
         </div>
 
         <div className="border-t border-slate-200 p-3 flex-shrink-0">
-          {/* Upgrade card */}
           {showUpgradeCard && !collapsed && (
             <div className="mx-2 mb-4 p-4 rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white relative overflow-hidden">
               <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-white/10 blur-xl" />
@@ -159,7 +137,6 @@ export function Navigation({
             </div>
           )}
 
-          {/* User area */}
           <div
             className={`flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer ${
               collapsed ? 'justify-center' : ''
@@ -178,7 +155,7 @@ export function Navigation({
                   onClick={() => {
                     if (onLogout) { onLogout(); return; }
                     localStorage.removeItem('token');
-                    router.push('/login');
+                    window.location.replace('/login');
                   }}
                   className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white transition-colors"
                   aria-label="Log out"

@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { Role, Status, Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RegisterDto } from './dto/register.dto';
 
@@ -55,19 +56,73 @@ export class AuthService {
   }
 
   async getMe(userId: string) {
-    return this.prisma.user.findUniqueOrThrow({
+    const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: {
         id: true,
         email: true,
         fullName: true,
         role: true,
-        tenant: { select: { id: true, name: true } },
+        tenantId: true,
+        departmentId: true,
+        tenant: { select: { id: true, name: true, package: true } },
+        department: { select: { id: true, name: true } },
       },
+    });
+
+    const [navItems, adminFeatures] = await Promise.all([
+      this.getNavItems(user, user.tenant),
+      this.getAdminFeatures(user, user.tenant),
+    ]);
+
+    return { ...user, navItems, adminFeatures };
+  }
+
+  private async getNavItems(
+    user: { role: string; departmentId: string | null },
+    tenant: { package: Tenant['package'] } | null,
+  ) {
+    const pkg = tenant?.package;
+    const baseWhere = pkg
+      ? { status: Status.ACTIVE, packages: { has: pkg } }
+      : { status: Status.ACTIVE };
+
+    if (user.role === Role.SUPER_ADMIN) {
+      return this.prisma.navItem.findMany({ orderBy: { order: 'asc' } });
+    }
+    if (user.role === Role.ADMIN) {
+      return this.prisma.navItem.findMany({ where: baseWhere, orderBy: { order: 'asc' } });
+    }
+    // USER
+    if (!user.departmentId) return [];
+    const dept = await this.prisma.department.findUniqueOrThrow({ where: { id: user.departmentId } });
+    return this.prisma.navItem.findMany({
+      where: {
+        ...baseWhere,
+        isAdminNav: false,
+        OR: [{ isAllDepts: true }, { id: { in: dept.navItemIds } }],
+      },
+      orderBy: { order: 'asc' },
     });
   }
 
-  private sign(user: { id: string; tenantId: string; email: string; role: string }) {
+  private async getAdminFeatures(
+    user: { role: string },
+    tenant: { package: Tenant['package'] } | null,
+  ) {
+    if (user.role === Role.USER) return [];
+    const features = await this.prisma.adminFeature.findMany({ where: { status: Status.ACTIVE } });
+    if (user.role === Role.SUPER_ADMIN) {
+      return features.map((f) => ({ ...f, featureStatus: 'available' as const }));
+    }
+    const pkg = tenant!.package;
+    return features.map((f) => ({
+      ...f,
+      featureStatus: (f.packages.includes(pkg) ? 'available' : 'locked') as 'available' | 'locked',
+    }));
+  }
+
+  private sign(user: { id: string; tenantId: string | null; email: string; role: string }) {
     return this.jwt.sign({ sub: user.id, tenantId: user.tenantId, email: user.email, role: user.role });
   }
 }

@@ -26,30 +26,72 @@ enum TenantPackage {
 }
 
 model Tenant {
-  id        String        @id @default(cuid())
-  name      String
-  package   TenantPackage @default(FREE)
-  status    Status        @default(ACTIVE)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  users     User[]
+  id          String        @id @default(cuid())
+  name        String
+  package     TenantPackage @default(FREE)
+  status      Status        @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  users       User[]
+  departments Department[]
 }
 
 model User {
-  id                 String    @id @default(cuid())
-  email              String    @unique
+  id                 String      @id @default(cuid())
+  email              String      @unique
   password           String
   fullName           String
   phoneCountryCode   String?
   phoneNo            String?
-  role               Role      @default(USER)
-  status             Status    @default(ACTIVE)
-  mustChangePassword Boolean   @default(false)
-  department         String?
+  role               Role        @default(USER)
+  status             Status      @default(ACTIVE)
+  mustChangePassword Boolean     @default(false)
   jobTitle           String?
   lastSignInAt       DateTime?
-  tenantId           String
-  tenant             Tenant    @relation(fields: [tenantId], references: [id])
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  tenantId           String?
+  tenant             Tenant?     @relation(fields: [tenantId], references: [id])
+  departmentId       String?
+  department         Department? @relation(fields: [departmentId], references: [id])
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+}
+
+model Department {
+  id         String   @id @default(cuid())
+  name       String
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  users      User[]
+  navItemIds String[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([name, tenantId])
+}
+
+model NavItem {
+  id         String          @id @default(cuid())
+  name       String
+  href       String
+  icon       String
+  order      Int             @default(0)
+  isSystem   Boolean         @default(false)
+  isAdminNav Boolean         @default(false)
+  isAllDepts Boolean         @default(true)
+  packages   TenantPackage[]
+  status     Status          @default(ACTIVE)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+}
+
+model AdminFeature {
+  id          String          @id @default(cuid())
+  name        String
+  key         String          @unique
+  description String?
+  isSystem    Boolean         @default(false)
+  packages    TenantPackage[]
+  status      Status          @default(ACTIVE)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 }

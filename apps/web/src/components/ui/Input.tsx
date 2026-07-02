@@ -30,7 +30,7 @@ export function Input({
         <input
           aria-describedby={error || helperText ? `${id}-description` : undefined}
           aria-invalid={error ? true : undefined}
-          className={`peer w-full rounded-xl border bg-slate-100/60 py-[14px] px-4 text-[15px] text-slate-900 transition-all duration-300 ease-out outline-none placeholder:text-transparent focus:bg-white focus:border-teal-400 focus:ring-4 focus:ring-teal-400/10 hover:bg-slate-100/90 hover:border-slate-300 ${
+          className={`peer w-full rounded-xl border bg-slate-100/60 py-[14px] px-4 text-[15px] text-slate-900 transition-all duration-300 ease-out outline-none placeholder:text-transparent focus:bg-white focus:border-teal-400 focus:ring-4 focus:ring-teal-400/10 hover:bg-slate-100/90 hover:border-slate-300 [&:-webkit-autofill]:shadow-[0_0_0_30px_rgb(241_245_249)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:#0f172a] ${
             error ? 'border-red-300 focus:ring-red-500' : 'border-slate-200/80'
           } ${hasLeftIcon ? 'pl-10' : ''} ${hasRightElement ? 'pr-12' : ''} ${className}`}
           id={id}
@@ -46,6 +46,9 @@ export function Input({
               peer-not-placeholder-shown:-top-2 peer-not-placeholder-shown:left-3
               peer-not-placeholder-shown:text-xs peer-not-placeholder-shown:bg-white
               peer-not-placeholder-shown:font-medium
+              peer-[:-webkit-autofill]:-top-2 peer-[:-webkit-autofill]:left-3
+              peer-[:-webkit-autofill]:text-xs peer-[:-webkit-autofill]:bg-slate-100
+              peer-[:-webkit-autofill]:font-medium
               ${error ? 'text-red-500 peer-focus:text-red-500' : ''}
               ${hasLeftIcon ? 'left-10' : ''}
             `}

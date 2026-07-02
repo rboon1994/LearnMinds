@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { SearchInput } from '@/components/ui/SearchInput';
-import { Navigation, MAIN_NAV } from '@/components/layout/Navigation';
-import { apiUrl } from '@/lib/api';
+import { Navigation } from '@/components/layout/Navigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -53,37 +53,16 @@ function initials(name: string) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatStudents(n: number) {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
-
-const levelColors: Record<string, string> = {
-  Beginner: 'bg-emerald-100 text-emerald-700',
-  Intermediate: 'bg-blue-100 text-blue-700',
-  Advanced: 'bg-purple-100 text-purple-700',
-};
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function LearnPage() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeNav, setActiveNav] = useState('learn');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [tenantName, setTenantName] = useState<string | null>(null);
-  const [navUser, setNavUser] = useState({ name: '', initials: '', role: '' });
+  const { user: authUser } = useAuth();
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    fetch(`${apiUrl}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((data) => {
-        setTenantName(data?.tenant?.name ?? null);
-        const name: string = data?.fullName ?? '';
-        setNavUser({ name, initials: initials(name), role: data?.role ?? '' });
-      })
-      .catch(() => {});
-  }, []);
+  const tenantName = authUser?.tenant?.name ?? null;
+  const navUserName = authUser?.fullName ?? '';
+  const navUser = { name: navUserName, initials: initials(navUserName), role: authUser?.role ?? '' };
 
   const filteredCourses = useMemo(() => {
     let result = COURSES;
@@ -99,9 +78,6 @@ export default function LearnPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex">
       <Navigation
-        items={MAIN_NAV}
-        activeId={activeNav}
-        onNavigate={setActiveNav}
         user={navUser}
         mobileOpen={mobileMenuOpen}
         onMobileClose={() => setMobileMenuOpen(false)}
@@ -134,7 +110,7 @@ export default function LearnPage() {
                     </svg>
                   </button>
                   <h1 className="text-2xl sm:text-3xl font-bold leading-tight">
-                    {tenantName ?? 'LearnMinds'}
+                    {tenantName ?? 'Super Admin Panel'}
                   </h1>
                 </div>
               </div>
