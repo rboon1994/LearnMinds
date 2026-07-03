@@ -11,6 +11,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { apiUrl } from '@/lib/api';
+import { landingRoute } from '@/lib/nav';
 import { useAuth } from '@/contexts/AuthContext';
 
 type LoginFormData = {
@@ -26,7 +27,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!loading && user) router.replace('/learn');
+    if (!loading && user) router.replace(landingRoute(user.navItems));
   }, [user, loading, router]);
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -70,7 +71,14 @@ export default function LoginPage() {
       const data = await response.json();
       if (data.access_token) {
         localStorage.setItem('token', data.access_token);
-        window.location.replace('/learn');
+        try {
+          const me = await fetch(`${apiUrl}/auth/me`, {
+            headers: { Authorization: `Bearer ${data.access_token}` },
+          }).then((r) => r.json());
+          window.location.replace(landingRoute(me.navItems ?? []));
+        } catch {
+          window.location.replace('/learn');
+        }
       } else {
         throw new Error('Login failed. Please try again.');
       }

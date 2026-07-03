@@ -72,7 +72,7 @@ model Department {
 model NavItem {
   id         String          @id @default(cuid())
   name       String
-  href       String
+  href       String          @unique
   icon       String
   order      Int             @default(0)
   isSystem   Boolean         @default(false)
@@ -89,6 +89,7 @@ model AdminFeature {
   name        String
   key         String          @unique
   description String?
+  order       Int             @default(0)
   isSystem    Boolean         @default(false)
   packages    TenantPackage[]
   status      Status          @default(ACTIVE)

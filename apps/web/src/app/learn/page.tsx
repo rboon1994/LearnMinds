@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { Navigation } from '@/components/layout/Navigation';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
@@ -60,7 +61,6 @@ export default function LearnPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user: authUser } = useAuth();
 
-  const tenantName = authUser?.tenant?.name ?? null;
   const navUserName = authUser?.fullName ?? '';
   const navUser = { name: navUserName, initials: initials(navUserName), role: authUser?.role ?? '' };
 
@@ -85,37 +85,10 @@ export default function LearnPage() {
 
       {/* ── Main ── */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <main className="flex-1 px-4 sm:px-6 lg:px-6 py-6 overflow-x-hidden">
-          <div className="max-w-7xl mx-auto space-y-8">
-
-            {/* ── Hero banner ── */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="pb-6 sm:pb-8 mb-0"
-            >
-              {/* Ambient blobs — signature depth element */}
-              
-              <div className="relative flex flex-col lg:flex-row gap-8 items-start lg:items-center justify-between">
-                {/* Left */}
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setMobileMenuOpen(true)}
-                    className="lg:hidden p-2 -ml-1 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
-                    aria-label="Open menu"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
-                  </button>
-                  <h1 className="text-2xl sm:text-3xl font-bold leading-tight">
-                    {tenantName ?? 'Super Admin Panel'}
-                  </h1>
-                </div>
-              </div>
-            </motion.div>
-
+        <PageHeader
+          defaultTitle="Super Admin Panel"
+          onOpenMobileMenu={() => setMobileMenuOpen(true)}
+        >
             {/* ── Search bar ── */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -208,8 +181,7 @@ export default function LearnPage() {
                   ))}
                 </motion.div>
             )}
-          </div>
-        </main>
+        </PageHeader>
       </div>
     </div>
   );

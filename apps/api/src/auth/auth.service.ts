@@ -111,7 +111,10 @@ export class AuthService {
     tenant: { package: Tenant['package'] } | null,
   ) {
     if (user.role === Role.USER) return [];
-    const features = await this.prisma.adminFeature.findMany({ where: { status: Status.ACTIVE } });
+    const features = await this.prisma.adminFeature.findMany({
+      where: { status: Status.ACTIVE },
+      orderBy: { order: 'asc' },
+    });
     if (user.role === Role.SUPER_ADMIN) {
       return features.map((f) => ({ ...f, featureStatus: 'available' as const }));
     }

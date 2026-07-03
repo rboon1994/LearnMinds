@@ -3,6 +3,7 @@ import { Role, TenantPackage } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AdminFeaturesService } from './admin-features.service';
+import { ReorderAdminFeaturesDto } from './dto/reorder-admin-features.dto';
 import { UpsertAdminFeatureDto } from './dto/upsert-admin-feature.dto';
 
 @Controller('admin-features')
@@ -19,6 +20,11 @@ export class AdminFeaturesController {
   @Post()
   create(@Body() dto: UpsertAdminFeatureDto) {
     return this.svc.create(dto);
+  }
+
+  @Patch('reorder')
+  reorder(@Body() dto: ReorderAdminFeaturesDto) {
+    return this.svc.reorder(dto.ids);
   }
 
   @Patch(':id')
