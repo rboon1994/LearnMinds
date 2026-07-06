@@ -9,16 +9,22 @@ export type IconName =
   | 'chevrons-left'
   | 'cog'
   | 'credit-card'
+  | 'download'
   | 'email'
   | 'error'
   | 'eye'
   | 'eye-off'
+  | 'file'
   | 'info'
   | 'list'
   | 'lock'
   | 'logout'
+  | 'play'
   | 'search'
   | 'shield'
+  | 'trash'
+  | 'upload'
+  | 'video'
   | 'warning'
   | 'x'
   | 'user';
@@ -43,6 +49,9 @@ const paths: Record<IconName, string[]> = {
     'M15 12a3 3 0 11-6 0 3 3 0 016 0z',
   ],
   logout: ['M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1'],
+  play: [
+    'M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z',
+  ],
   check: ['M5 13l4 4L19 7'],
   'check-circle': ['M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'],
   email: [
@@ -67,6 +76,15 @@ const paths: Record<IconName, string[]> = {
   warning: ['M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'],
   x: ['M6 18L18 6M6 6l12 12'],
   user: ['M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'],
+  video: ['M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'],
+  file: [
+    'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  ],
+  upload: ['M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M12 12v9m0-9l-3 3m3-3l3 3'],
+  download: ['M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4'],
+  trash: [
+    'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16',
+  ],
 };
 
 export function Icon({ name, className = 'h-5 w-5', ...props }: IconProps) {

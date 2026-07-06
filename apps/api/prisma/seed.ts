@@ -103,6 +103,15 @@ async function main() {
       packages: ['PRO', 'ENTERPRISE'],
       status: 'ACTIVE',
     },
+    {
+      name: 'Course Management',
+      key: 'course-management',
+      description: 'Create and manage courses and lessons',
+      order: 6,
+      isSystem: true,
+      packages: ['PRO', 'ENTERPRISE'],
+      status: 'ACTIVE',
+    },
   ];
   for (const feature of adminFeatures) {
     await prisma.adminFeature.upsert({

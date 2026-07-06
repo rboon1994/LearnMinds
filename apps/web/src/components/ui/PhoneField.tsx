@@ -114,7 +114,7 @@ export function PhoneField({
           inputProps={{ id }}
           defaultCountry={defaultCountry}
           value={value}
-          onChange={onChange}
+          onChange={(phone, meta) => onChange(phone, meta.country.dialCode)}
           style={{ width: '100%' }}
           inputStyle={{
             width: '100%',

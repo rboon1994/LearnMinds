@@ -1,16 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Icon, type IconName } from '@/components/ui/Icon';
-import { Navigation } from '@/components/layout/Navigation';
-import { PageHeader } from '@/components/layout/PageHeader';
+import { AdminLayout } from '@/components/layout/AdminLayout';
 import { useAuth } from '@/contexts/AuthContext';
-
-function initials(name: string) {
-  return name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
-}
 
 const FEATURE_META: Record<string, { href: string; icon: IconName; color: string; subtitle: string }> = {
   'user-management': { href: '/admin/users', icon: 'user', color: 'bg-blue-50', subtitle: 'Manage users and roles' },
@@ -18,6 +12,7 @@ const FEATURE_META: Record<string, { href: string; icon: IconName; color: string
   'navigation-management': { href: '/admin/nav-items', icon: 'list', color: 'bg-indigo-50', subtitle: 'Configure navigation' },
   'admin-feature-management': { href: '/admin/admin-features', icon: 'cog', color: 'bg-green-50', subtitle: 'Manage admin features' },
   billing: { href: '/admin/billing', icon: 'credit-card', color: 'bg-orange-50', subtitle: 'Payments and subscriptions' },
+  'course-management': { href: '/admin/courses', icon: 'video', color: 'bg-pink-50', subtitle: 'Manage courses and lessons' },
 };
 
 // Fallback for any AdminFeature without a matching route/icon above — keeps it
@@ -31,26 +26,11 @@ const DEFAULT_META: { href: string | null; icon: IconName; color: string; subtit
 export default function AdminPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const navUserName = user?.fullName ?? '';
-  const navUser = { name: navUserName, initials: initials(navUserName), role: user?.role ?? '' };
   const features = user?.adminFeatures ?? [];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      <Navigation
-        user={navUser}
-        mobileOpen={mobileMenuOpen}
-        onMobileClose={() => setMobileMenuOpen(false)}
-      />
-
-      <div className="flex-1 min-w-0 flex flex-col">
-        <PageHeader
-          defaultTitle="Admin Dashboard"
-          onOpenMobileMenu={() => setMobileMenuOpen(true)}
-        >
-          <motion.div
+    <AdminLayout title="Admin Dashboard">
+      <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
@@ -91,8 +71,6 @@ export default function AdminPage() {
               );
             })}
           </motion.div>
-        </PageHeader>
-      </div>
-    </div>
+    </AdminLayout>
   );
 }

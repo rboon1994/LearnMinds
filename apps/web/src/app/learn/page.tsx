@@ -1,79 +1,61 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { Navigation } from '@/components/layout/Navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiUrl } from '@/lib/api';
 
-// ─── Data ────────────────────────────────────────────────────────────────────
+type Course = {
+  id: string;
+  title: string;
+  description: string | null;
+  coverImageUrl: string | null;
+  status: 'DRAFT' | 'PUBLISHED';
+  _count: { lessons: number };
+};
 
-const COURSES = [
-  {
-    id: 1,
-    title: 'React 18 Advanced: From Hooks to Server Components',
-    instructor: 'Michael Chen',
-    avatar: 'MC',
-    gradient: 'from-cyan-500 to-blue-600',
-    duration: '12h 45m',
-    lessons: 48,
-  },
-  {
-    id: 2,
-    title: 'Python Machine Learning: From Basics to Production',
-    instructor: 'Sarah Wang',
-    avatar: 'SW',
-    gradient: 'from-yellow-500 to-orange-600',
-    duration: '18h 20m',
-    lessons: 62,
-  },
-  {
-    id: 3,
-    title: 'UI/UX Design Systems: Building Enterprise Design Language',
-    instructor: 'Emily Zhang',
-    avatar: 'EZ',
-    gradient: 'from-pink-500 to-purple-600',
-    duration: '9h 15m',
-    lessons: 36,
-  },
-  {
-    id: 4,
-    title: 'NestJS + PostgreSQL: Full-Stack Development',
-    instructor: 'David Liu',
-    avatar: 'DL',
-    gradient: 'from-green-500 to-emerald-600',
-    duration: '15h 30m',
-    lessons: 54,
-  }
+const GRADIENTS = [
+  'from-cyan-500 to-blue-600',
+  'from-yellow-500 to-orange-600',
+  'from-pink-500 to-purple-600',
+  'from-green-500 to-emerald-600',
 ];
 
 function initials(name: string) {
   return name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function LearnPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
   const { user: authUser } = useAuth();
+  const router = useRouter();
 
   const navUserName = authUser?.fullName ?? '';
   const navUser = { name: navUserName, initials: initials(navUserName), role: authUser?.role ?? '' };
 
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    fetch(`${apiUrl}/courses`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then(setCourses)
+      .catch(() => {});
+  }, []);
+
   const filteredCourses = useMemo(() => {
-    let result = COURSES;
+    let result = courses;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (c) => c.title.toLowerCase().includes(q) || c.instructor.toLowerCase().includes(q)
-      );
+      result = result.filter((c) => c.title.toLowerCase().includes(q));
     }
     return result;
-  }, [searchQuery]);
+  }, [courses, searchQuery]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -131,7 +113,7 @@ export default function LearnPage() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5"
+                className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3 gap-5"
               >
                   {filteredCourses.map((course, idx) => (
                     <motion.article
@@ -140,22 +122,28 @@ export default function LearnPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.35, delay: idx * 0.04 }}
                       whileHover={{ y: -4 }}
+                      onClick={() => router.push(`/learn/${course.id}`)}
                       className="group bg-white rounded-2xl overflow-hidden border border-slate-200 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/50 transition-all cursor-pointer"
                     >
                       {/* Cover */}
-                      <div className={`relative aspect-video bg-gradient-to-br ${course.gradient} overflow-hidden`}>
-                        {/* Decorative blobs */}
-                        <div className="absolute top-3 right-3 w-20 h-20 rounded-full bg-white/15 blur-xl pointer-events-none" />
-                        <div className="absolute bottom-3 left-3 w-16 h-16 rounded-full bg-black/10 blur-lg pointer-events-none" />
-                        {/* Initial watermark */}
-                        <div className="absolute inset-0 flex items-center justify-center text-white/15 text-7xl font-black select-none">
-                          {course.title.charAt(0)}
-                        </div>
-
-                        {/* Duration */}
-                        <div className="absolute bottom-2.5 right-2.5 px-2 py-0.5 bg-black/55 backdrop-blur-sm text-white text-xs rounded-md font-medium">
-                          {course.duration}
-                        </div>
+                      <div className="relative aspect-video overflow-hidden">
+                        {course.status === 'DRAFT' && (
+                          <span className="absolute top-2 left-2 z-10 rounded-full bg-slate-900/80 px-2 py-0.5 text-xs font-medium text-white">
+                            Draft
+                          </span>
+                        )}
+                        {course.coverImageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={course.coverImageUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className={`w-full h-full bg-gradient-to-br ${GRADIENTS[idx % GRADIENTS.length]}`}>
+                            <div className="absolute top-3 right-3 w-20 h-20 rounded-full bg-white/15 blur-xl pointer-events-none" />
+                            <div className="absolute bottom-3 left-3 w-16 h-16 rounded-full bg-black/10 blur-lg pointer-events-none" />
+                            <div className="absolute inset-0 flex items-center justify-center text-white/15 text-7xl font-black select-none">
+                              {course.title.charAt(0)}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Content */}
@@ -163,19 +151,7 @@ export default function LearnPage() {
                         <h3 className="text-sm font-semibold text-slate-900 line-clamp-2 mb-3 group-hover:text-indigo-600 transition-colors leading-snug min-h-[2.5rem]">
                           {course.title}
                         </h3>
-
-                        {/* Lecturer + lesson */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-[10px] font-semibold flex-shrink-0">
-                              {course.avatar}
-                            </div>
-                            <span className="text-xs text-slate-500 truncate max-w-[100px]">{course.instructor}</span>
-                          </div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs text-slate-400">{course.lessons} lessons</span>
-                          </div>
-                        </div>
+                        <span className="text-xs text-slate-400">{course._count.lessons} lessons</span>
                       </div>
                     </motion.article>
                   ))}

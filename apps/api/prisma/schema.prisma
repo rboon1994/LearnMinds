@@ -25,6 +25,16 @@ enum TenantPackage {
   ENTERPRISE
 }
 
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum VideoType {
+  UPLOAD
+  EXTERNAL_LINK
+}
+
 model Tenant {
   id          String        @id @default(cuid())
   name        String
@@ -34,6 +44,7 @@ model Tenant {
   updatedAt   DateTime      @updatedAt
   users       User[]
   departments Department[]
+  courses     Course[]
 }
 
 model User {
@@ -54,6 +65,7 @@ model User {
   department         Department? @relation(fields: [departmentId], references: [id])
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
+  coursesCreated     Course[]
 }
 
 model Department {
@@ -95,4 +107,52 @@ model AdminFeature {
   status      Status          @default(ACTIVE)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+}
+
+model Course {
+  id            String        @id @default(cuid())
+  title         String
+  description   String?
+  coverImageUrl String?
+  status        ContentStatus @default(DRAFT)
+  tenantId      String?
+  tenant        Tenant?       @relation(fields: [tenantId], references: [id])
+  createdById   String?
+  createdBy     User?         @relation(fields: [createdById], references: [id])
+  lessons       Lesson[]
+  files         CourseFile[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([tenantId])
+}
+
+model Lesson {
+  id              String        @id @default(cuid())
+  title           String
+  coverImageUrl   String?
+  courseId        String
+  course          Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  order           Int           @default(0)
+  status          ContentStatus @default(DRAFT)
+  videoType       VideoType
+  videoUrl        String?
+  durationSeconds Int?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([courseId])
+}
+
+model CourseFile {
+  id        String   @id @default(cuid())
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  fileName  String
+  fileUrl   String
+  mimeType  String
+  sizeBytes Int
+  createdAt DateTime @default(now())
+
+  @@index([courseId])
 }

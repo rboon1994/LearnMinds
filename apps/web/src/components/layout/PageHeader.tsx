@@ -7,10 +7,11 @@ import { useAuth } from '@/contexts/AuthContext';
 interface PageHeaderProps {
   defaultTitle: string;
   onOpenMobileMenu: () => void;
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }
 
-export function PageHeader({ defaultTitle, onOpenMobileMenu, children }: PageHeaderProps) {
+export function PageHeader({ defaultTitle, onOpenMobileMenu, actions, children }: PageHeaderProps) {
   const { user } = useAuth();
   const title = user?.tenant?.name ?? defaultTitle;
   return (
@@ -35,6 +36,7 @@ export function PageHeader({ defaultTitle, onOpenMobileMenu, children }: PageHea
                 <h1 className="text-2xl sm:text-3xl font-bold leading-tight">{title}</h1>
               </div>
             </div>
+            {actions && <div className="flex items-center gap-3 shrink-0">{actions}</div>}
           </div>
         </motion.div>
 

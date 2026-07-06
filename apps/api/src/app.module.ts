@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { DepartmentsModule } from './departments/departments.module';
 import { NavItemsModule } from './nav-items/nav-items.module';
 import { AdminFeaturesModule } from './admin-features/admin-features.module';
+import { CoursesModule } from './courses/courses.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AdminFeaturesModule } from './admin-features/admin-features.module';
     DepartmentsModule,
     NavItemsModule,
     AdminFeaturesModule,
+    CoursesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

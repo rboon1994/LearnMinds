@@ -46,6 +46,9 @@ lerna-debug.log*
 .temp
 .tmp
 
+# local file storage (StorageService) — swapped for GCS post-deployment
+/uploads
+
 # Runtime data
 pids
 *.pid
