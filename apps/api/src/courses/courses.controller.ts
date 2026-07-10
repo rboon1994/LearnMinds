@@ -18,7 +18,12 @@ import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './dto/create-course.dto';
 
 export type AuthReq = {
-  user: { userId: string; tenantId: string | null; role: Role };
+  user: {
+    userId: string;
+    tenantId: string | null;
+    studentId: string | null;
+    role: Role;
+  };
 };
 
 // AdminFeatureGuard unconditionally forbids Role.USER (it assumes admin-only routes), so it's
@@ -44,13 +49,13 @@ export class CoursesController {
   }
 
   @Get()
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.USER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.USER, Role.STUDENT)
   findBrowsable(@Request() req: AuthReq) {
     return this.svc.findBrowsable(req.user);
   }
 
   @Get(':id')
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.USER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.USER, Role.STUDENT)
   findOne(@Param('id') id: string, @Request() req: AuthReq) {
     return this.svc.findOne(id, req.user);
   }

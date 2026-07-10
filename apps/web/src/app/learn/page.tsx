@@ -8,12 +8,15 @@ import { Navigation } from '@/components/layout/Navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
+import { formatDateRange } from '@/lib/duration';
 
 type Course = {
   id: string;
   title: string;
   description: string | null;
-  coverImageUrl: string | null;
+  thumbnail: string | null;
+  startDate: string | null;
+  endDate: string | null;
   status: 'DRAFT' | 'PUBLISHED';
   _count: { lessons: number };
 };
@@ -132,9 +135,9 @@ export default function LearnPage() {
                             Draft
                           </span>
                         )}
-                        {course.coverImageUrl ? (
+                        {course.thumbnail ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={course.coverImageUrl} alt="" className="w-full h-full object-cover" />
+                          <img src={course.thumbnail} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <div className={`w-full h-full bg-gradient-to-br ${GRADIENTS[idx % GRADIENTS.length]}`}>
                             <div className="absolute top-3 right-3 w-20 h-20 rounded-full bg-white/15 blur-xl pointer-events-none" />
@@ -148,9 +151,14 @@ export default function LearnPage() {
 
                       {/* Content */}
                       <div className="p-4">
-                        <h3 className="text-sm font-semibold text-slate-900 line-clamp-2 mb-3 group-hover:text-indigo-600 transition-colors leading-snug min-h-[2.5rem]">
+                        <h3 className="text-sm font-semibold text-slate-900 line-clamp-2 mb-1 group-hover:text-indigo-600 transition-colors leading-snug min-h-[2.5rem]">
                           {course.title}
                         </h3>
+                        {formatDateRange(course.startDate, course.endDate) && (
+                          <p className="text-xs text-slate-400 mb-2">
+                            {formatDateRange(course.startDate, course.endDate)}
+                          </p>
+                        )}
                         <span className="text-xs text-slate-400">{course._count.lessons} lessons</span>
                       </div>
                     </motion.article>

@@ -1,5 +1,11 @@
 import { ContentStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 
 export class CreateCourseDto {
   @IsString()
@@ -12,9 +18,22 @@ export class CreateCourseDto {
 
   @IsString()
   @IsOptional()
-  coverImageUrl?: string;
+  thumbnail?: string;
+
+  // Display-only: when the recorded event took place, not used for sorting or "upcoming" logic.
+  @IsDateString()
+  @IsOptional()
+  startDate?: string;
+
+  @IsDateString()
+  @IsOptional()
+  endDate?: string;
 
   @IsEnum(ContentStatus)
   @IsOptional()
   status?: ContentStatus;
+
+  @IsString()
+  @IsOptional()
+  seriesId?: string;
 }

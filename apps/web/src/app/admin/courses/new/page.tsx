@@ -13,7 +13,9 @@ export default function NewCoursePage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [thumbnail, setThumbnail] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -32,7 +34,9 @@ export default function NewCoursePage() {
       body: JSON.stringify({
         title,
         description: description || undefined,
-        coverImageUrl: coverImageUrl || undefined,
+        thumbnail: thumbnail || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
       }),
     });
     setIsLoading(false);
@@ -63,12 +67,32 @@ export default function NewCoursePage() {
             />
           </div>
           <Input
-            id="coverImageUrl"
-            label="Cover Image URL"
-            value={coverImageUrl}
-            onChange={(e) => setCoverImageUrl(e.target.value)}
+            id="thumbnail"
+            label="Thumbnail"
+            value={thumbnail}
+            onChange={(e) => setThumbnail(e.target.value)}
             placeholder="https://..."
           />
+          <div className="flex gap-3">
+            <div className="flex-1 min-w-0">
+              <Input
+                id="startDate"
+                label="Start date"
+                onChange={(e) => setStartDate(e.target.value)}
+                type="date"
+                value={startDate}
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <Input
+                id="endDate"
+                label="End date"
+                onChange={(e) => setEndDate(e.target.value)}
+                type="date"
+                value={endDate}
+              />
+            </div>
+          </div>
           {error && (
             <Alert type="error" icon={<Icon name="error" className="h-4 w-4" />}>
               {error}

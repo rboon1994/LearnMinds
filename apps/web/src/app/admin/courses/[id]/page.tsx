@@ -5,18 +5,25 @@ import { useParams, useRouter } from 'next/navigation';
 import { Reorder } from 'framer-motion';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
+import { ConfirmDeleteDialog, Dialog } from '@/components/ui/Dialog';
 import { FeatureGate } from '@/components/ui/FeatureGate';
+import { FileUpload } from '@/components/ui/FileUpload';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
+import { RadioGroup } from '@/components/ui/RadioGroup';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { Textarea } from '@/components/ui/Textarea';
+import { useToast } from '@/components/ui/Toast';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
 import { formatDuration, parseDuration } from '@/lib/duration';
+import { fetchVimeoDuration } from '@/lib/vimeo';
 
 type Lesson = {
   id: string;
   title: string;
-  coverImageUrl: string | null;
   order: number;
   status: 'DRAFT' | 'PUBLISHED';
   videoType: 'UPLOAD' | 'EXTERNAL_LINK';
@@ -35,7 +42,10 @@ type Course = {
   id: string;
   title: string;
   description: string | null;
-  coverImageUrl: string | null;
+  thumbnail: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  seriesId: string | null;
   status: 'DRAFT' | 'PUBLISHED';
   lessons: Lesson[];
   files: CourseFile[];
@@ -52,8 +62,14 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+async function autofillDurationFromVimeo(url: string, setDuration: (value: string) => void) {
+  const seconds = await fetchVimeoDuration(url);
+  if (seconds != null) setDuration(formatDuration(seconds) ?? '');
+}
+
 export default function EditCoursePage() {
   const { user } = useAuth();
+  const toast = useToast();
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const courseId = params.id;
@@ -67,14 +83,25 @@ export default function EditCoursePage() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [thumbnail, setThumbnail] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [error, setError] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
 
+  const [confirmDelete, setConfirmDelete] = useState<{ type: 'course' | 'lesson' | 'file'; id?: string } | null>(
+    null,
+  );
+  const [seriesId, setSeriesId] = useState('');
+  const [seriesOptions, setSeriesOptions] = useState<{ value: string; label: string }[]>([]);
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
+  const [isAddLessonOpen, setIsAddLessonOpen] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [newLessonVideoType, setNewLessonVideoType] = useState<'UPLOAD' | 'EXTERNAL_LINK'>('EXTERNAL_LINK');
   const [newLessonVideoUrl, setNewLessonVideoUrl] = useState('');
+  const [newLessonDuration, setNewLessonDuration] = useState('');
+  const [newLessonDurationError, setNewLessonDurationError] = useState('');
 
   const load = () => {
     fetch(`${apiUrl}/courses/${courseId}`, { headers: authHeaders() })
@@ -84,7 +111,10 @@ export default function EditCoursePage() {
         setLessons(data.lessons);
         setTitle(data.title);
         setDescription(data.description ?? '');
-        setCoverImageUrl(data.coverImageUrl ?? '');
+        setThumbnail(data.thumbnail ?? '');
+        setStartDate(data.startDate?.slice(0, 10) ?? '');
+        setEndDate(data.endDate?.slice(0, 10) ?? '');
+        setSeriesId(data.seriesId ?? '');
       })
       .catch(() => setError('Failed to load course'));
   };
@@ -96,6 +126,14 @@ export default function EditCoursePage() {
     }
     if (!user) return;
     load();
+    if (user.role === 'SUPER_ADMIN') {
+      fetch(`${apiUrl}/course-series`, { headers: authHeaders() })
+        .then((r) => r.json())
+        .then((data: { id: string; name: string }[]) =>
+          setSeriesOptions(data.map((s) => ({ value: s.id, label: s.name }))),
+        )
+        .catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, courseId, router]);
 
@@ -109,13 +147,21 @@ export default function EditCoursePage() {
     const res = await fetch(`${apiUrl}/courses/${courseId}`, {
       method: 'PATCH',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, description: description || null, coverImageUrl: coverImageUrl || null }),
+      body: JSON.stringify({
+        title,
+        description: description || null,
+        thumbnail: thumbnail || null,
+        startDate: startDate || null,
+        endDate: endDate || null,
+        seriesId: seriesId || null,
+      }),
     });
     setSavingMeta(false);
     if (!res.ok) {
-      setError('Failed to save course');
+      toast.saveFailed();
       return;
     }
+    toast.saved();
     load();
   };
 
@@ -130,8 +176,12 @@ export default function EditCoursePage() {
   };
 
   const deleteCourse = async () => {
-    if (!confirm('Delete this course and all its lessons/files?')) return;
-    await fetch(`${apiUrl}/courses/${courseId}`, { method: 'DELETE', headers: authHeaders() });
+    const res = await fetch(`${apiUrl}/courses/${courseId}`, { method: 'DELETE', headers: authHeaders() });
+    if (!res.ok) {
+      toast.deleteFailed();
+      return;
+    }
+    toast.deleted();
     router.push('/admin/courses');
   };
 
@@ -147,23 +197,60 @@ export default function EditCoursePage() {
     e.preventDefault();
     if (!newLessonTitle.trim()) return;
     if (newLessonVideoType === 'EXTERNAL_LINK' && !newLessonVideoUrl.trim()) return;
-    await fetch(`${apiUrl}/courses/${courseId}/lessons`, {
+    let newLessonDurationInput = newLessonDuration;
+    if (newLessonVideoType === 'EXTERNAL_LINK') {
+      const seconds = await fetchVimeoDuration(newLessonVideoUrl);
+      if (seconds != null) newLessonDurationInput = formatDuration(seconds) ?? newLessonDurationInput;
+    }
+    const durationSeconds = newLessonDurationInput.trim() ? parseDuration(newLessonDurationInput) : null;
+    if (newLessonDurationInput.trim() && durationSeconds == null) {
+      setNewLessonDurationError('Use mm:ss or h:mm:ss, e.g. 24:38');
+      return;
+    }
+    setNewLessonDurationError('');
+    const res = await fetch(`${apiUrl}/courses/${courseId}/lessons`, {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: newLessonTitle,
         videoType: newLessonVideoType,
         videoUrl: newLessonVideoType === 'EXTERNAL_LINK' ? newLessonVideoUrl : undefined,
+        durationSeconds,
       }),
     });
-    setNewLessonTitle('');
-    setNewLessonVideoUrl('');
+    if (!res.ok) {
+      toast.saveFailed();
+      return;
+    }
+    toast.saved();
+    resetNewLessonForm();
+    setIsAddLessonOpen(false);
     load();
   };
 
+  const resetNewLessonForm = () => {
+    setNewLessonTitle('');
+    setNewLessonVideoType('EXTERNAL_LINK');
+    setNewLessonVideoUrl('');
+    setNewLessonDuration('');
+    setNewLessonDurationError('');
+  };
+
+  const closeAddLessonDialog = () => {
+    setIsAddLessonOpen(false);
+    resetNewLessonForm();
+  };
+
   const deleteLesson = async (lessonId: string) => {
-    if (!confirm('Delete this lesson?')) return;
-    await fetch(`${apiUrl}/courses/${courseId}/lessons/${lessonId}`, { method: 'DELETE', headers: authHeaders() });
+    const res = await fetch(`${apiUrl}/courses/${courseId}/lessons/${lessonId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    if (!res.ok) {
+      toast.deleteFailed();
+      return;
+    }
+    toast.deleted();
     load();
   };
 
@@ -177,120 +264,108 @@ export default function EditCoursePage() {
     load();
   };
 
-  const uploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploadFile = async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    await fetch(`${apiUrl}/courses/${courseId}/files`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: formData,
-    });
-    e.target.value = '';
+    try {
+      const res = await fetch(`${apiUrl}/courses/${courseId}/files`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: formData,
+      });
+      if (!res.ok) {
+        toast.saveFailed();
+        return;
+      }
+    } catch {
+      toast.saveFailed();
+      return;
+    }
+    toast.saved();
     load();
   };
 
   const deleteFile = async (fileId: string) => {
-    if (!confirm('Delete this file?')) return;
-    await fetch(`${apiUrl}/courses/${courseId}/files/${fileId}`, { method: 'DELETE', headers: authHeaders() });
+    const res = await fetch(`${apiUrl}/courses/${courseId}/files/${fileId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    if (!res.ok) {
+      toast.deleteFailed();
+      return;
+    }
+    toast.deleted();
     load();
   };
 
   return (
-    <AdminLayout title="Edit Course">
+    <AdminLayout
+      title="Edit Course"
+      backHref="/admin/courses"
+      subtitle={course.title}
+      actions={
+        <>
+          <Button variant="secondary" onClick={togglePublish}>
+            {course.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => setConfirmDelete({ type: 'course' })}
+            leftIcon={<Icon name="trash" className="h-4 w-4 mr-1.5" />}
+          >
+            Delete
+          </Button>
+        </>
+      }
+    >
       <FeatureGate featureKey="course-management">
-        <div className="max-w-3xl space-y-10">
-        <div>
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-2xl font-bold text-slate-900">{course.title}</h1>
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={togglePublish}>
-                {course.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}
-              </Button>
-              <Button variant="ghost" onClick={deleteCourse} className="text-red-600 hover:bg-red-50">
-                Delete Course
-              </Button>
-            </div>
-          </div>
-
-          <form className="space-y-5" onSubmit={saveMeta} noValidate>
-            <Input id="title" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700" htmlFor="description">
-                Description
-              </label>
-              <textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={4}
-                className="block w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-slate-900 placeholder-slate-400 transition-all focus:outline-none focus:ring-4 focus:ring-teal-400/10 focus:border-teal-400"
-              />
-            </div>
-            <Input
-              id="coverImageUrl"
-              label="Cover Image URL"
-              value={coverImageUrl}
-              onChange={(e) => setCoverImageUrl(e.target.value)}
-              placeholder="https://..."
-            />
-            {error && (
-              <Alert type="error" icon={<Icon name="error" className="h-4 w-4" />}>
-                {error}
-              </Alert>
-            )}
-            <Button type="submit" isLoading={savingMeta} loadingLabel="Saving...">
-              Save Changes
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        <div className="order-2 lg:order-1 lg:col-span-2 space-y-10">
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-slate-900">Lessons</h2>
+            <Button
+              leftIcon={<Icon name="plus" className="h-4 w-4 mr-1.5" />}
+              onClick={() => setIsAddLessonOpen(true)}
+              size="sm"
+              variant="secondary"
+            >
+              Add
             </Button>
-          </form>
-        </div>
-
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900 mb-3">Lessons</h2>
-          <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 mb-4">
+          </div>
+          <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 mb-4 max-h-102 overflow-y-auto">
             <Reorder.Group axis="y" values={lessons} onReorder={setLessons}>
               {lessons.map((lesson) => (
                 <Reorder.Item key={lesson.id} value={lesson} onDragEnd={persistLessonOrder} className="bg-white">
                   <div className="flex items-center px-4 py-3 hover:bg-slate-50">
                     <div className="w-8 shrink-0 text-slate-300 cursor-grab active:cursor-grabbing select-none">⠿</div>
-                    <div className="w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-slate-100 mr-3">
-                      {lesson.coverImageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={lesson.coverImageUrl} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Icon name="video" className="h-5 w-5 text-slate-300" />
-                        </div>
-                      )}
+                    <div className="w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-slate-100 mr-3 flex items-center justify-center">
+                      <Icon name="video" className="h-5 w-5 text-slate-300" />
                     </div>
                     <div className="flex-1 min-w-0 mr-3">
                       <p className="font-medium text-slate-900 truncate">{lesson.title}</p>
                       <p className="text-xs text-slate-400">{formatDuration(lesson.durationSeconds) ?? '--:--'}</p>
                     </div>
-                    <span
-                      className={`mr-3 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        lesson.status === 'PUBLISHED' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {lesson.status}
-                    </span>
+                    <div className="mr-3">
+                      <StatusBadge status={lesson.status} onClick={() => toggleLessonPublish(lesson)} />
+                    </div>
                     <button
                       type="button"
                       className="mr-3 text-slate-400 hover:text-slate-700"
                       onClick={() => setExpandedLessonId(expandedLessonId === lesson.id ? null : lesson.id)}
                     >
-                      <Icon name={expandedLessonId === lesson.id ? 'chevrons-left' : 'cog'} className="h-4 w-4" />
+                      <Icon name={expandedLessonId === lesson.id ? 'chevrons-left' : 'edit'} className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      className="text-red-500 hover:text-red-600"
+                      onClick={() => setConfirmDelete({ type: 'lesson', id: lesson.id })}
+                    >
+                      <Icon name="trash" className="h-4 w-4" />
                     </button>
                   </div>
                   {expandedLessonId === lesson.id && (
-                    <LessonEditor
-                      courseId={courseId}
-                      lesson={lesson}
-                      onTogglePublish={() => toggleLessonPublish(lesson)}
-                      onDelete={() => deleteLesson(lesson.id)}
-                      onSaved={load}
-                    />
+                    <LessonEditor courseId={courseId} lesson={lesson} onSaved={load} />
                   )}
                 </Reorder.Item>
               ))}
@@ -298,47 +373,52 @@ export default function EditCoursePage() {
             {lessons.length === 0 && <p className="px-4 py-6 text-center text-slate-400">No lessons yet.</p>}
           </div>
 
-          <form className="flex flex-wrap items-end gap-3" onSubmit={addLesson}>
-            <div className="flex-1 min-w-[180px]">
+          <Dialog isOpen={isAddLessonOpen} onClose={closeAddLessonDialog} title="Create New Lesson">
+            <form className="space-y-4" onSubmit={addLesson}>
               <Input
                 id="newLessonTitle"
-                label="New lesson title"
+                label="Title"
                 value={newLessonTitle}
                 onChange={(e) => setNewLessonTitle(e.target.value)}
               />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700" htmlFor="newLessonVideoType">
-                Video
-              </label>
-              <select
-                id="newLessonVideoType"
-                value={newLessonVideoType}
-                onChange={(e) => setNewLessonVideoType(e.target.value as 'UPLOAD' | 'EXTERNAL_LINK')}
-                className="rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-slate-900"
-              >
-                <option value="EXTERNAL_LINK">External link</option>
-                <option value="UPLOAD">Upload later</option>
-              </select>
-            </div>
-            {newLessonVideoType === 'EXTERNAL_LINK' && (
-              <div className="flex-1 min-w-[220px]">
+              <Input
+                id="newLessonDuration"
+                label="Duration"
+                value={newLessonDuration}
+                onChange={(e) => setNewLessonDuration(e.target.value)}
+                placeholder="hh:mm:ss, e.g. 1:24:38"
+                error={newLessonDurationError}
+              />
+              <div style={{ display: 'none' }}>
+                <RadioGroup
+                  label="Video"
+                  name="newLessonVideoType"
+                  onChange={(value) => setNewLessonVideoType(value as 'UPLOAD' | 'EXTERNAL_LINK')}
+                  options={[
+                    { label: 'External link', value: 'EXTERNAL_LINK' },
+                    { label: 'Upload later', value: 'UPLOAD' },
+                  ]}
+                  value={newLessonVideoType}
+                />
+              </div>
+              {newLessonVideoType === 'EXTERNAL_LINK' && (
                 <Input
                   id="newLessonVideoUrl"
                   label="Video URL"
                   value={newLessonVideoUrl}
                   onChange={(e) => setNewLessonVideoUrl(e.target.value)}
-                  placeholder="https://vimeo.com/..."
+                  onBlur={(e) => autofillDurationFromVimeo(e.target.value, setNewLessonDuration)}
+                  placeholder="Paste Vimeo URL"
                 />
-              </div>
-            )}
-            <Button type="submit">Add Lesson</Button>
-          </form>
+              )}
+              <Button type="submit">Create Lesson</Button>
+            </form>
+          </Dialog>
         </div>
 
-        <div>
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="text-lg font-semibold text-slate-900 mb-3">Files</h2>
-          <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 mb-4">
+          <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 mb-4 max-h-50 overflow-y-auto">
             {course.files.map((file) => (
               <div key={file.id} className="flex items-center px-4 py-3">
                 <Icon name="file" className="h-4 w-4 mr-3 text-slate-400 shrink-0" />
@@ -346,20 +426,102 @@ export default function EditCoursePage() {
                   <p className="truncate text-slate-900">{file.fileName}</p>
                   <p className="text-xs text-slate-400">{formatSize(file.sizeBytes)}</p>
                 </div>
-                <button type="button" className="text-red-500 hover:text-red-700" onClick={() => deleteFile(file.id)}>
+                <button
+                  type="button"
+                  className="text-red-500 hover:text-red-700"
+                  onClick={() => setConfirmDelete({ type: 'file', id: file.id })}
+                >
                   <Icon name="trash" className="h-4 w-4" />
                 </button>
               </div>
             ))}
             {course.files.length === 0 && <p className="px-4 py-6 text-center text-slate-400">No files yet.</p>}
           </div>
-          <label className="inline-flex items-center gap-2 cursor-pointer text-sm font-medium text-teal-700">
-            <Icon name="upload" className="h-4 w-4" />
-            Upload a file
-            <input type="file" className="hidden" onChange={uploadFile} />
-          </label>
+          <FileUpload
+            id="courseFile"
+            onFilesSelected={([file]) => file && uploadFile(file)}
+          />
+        </div>
+
+        </div>
+
+        <div className="order-1 lg:order-2 rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-slate-900 mb-3">Course</h2>
+          <form className="space-y-5" onSubmit={saveMeta} noValidate>
+            <Input id="title" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <Textarea
+              id="description"
+              label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={4}
+            />
+            <Input
+              id="thumbnail"
+              label="Thumbnail"
+              value={thumbnail}
+              onChange={(e) => setThumbnail(e.target.value)}
+              placeholder="https://..."
+            />
+            <div className="flex gap-3">
+              <div className="flex-1 min-w-0">
+                <Input
+                  id="startDate"
+                  label="Start date"
+                  onChange={(e) => setStartDate(e.target.value)}
+                  type="date"
+                  value={startDate}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <Input
+                  id="endDate"
+                  label="End date"
+                  onChange={(e) => setEndDate(e.target.value)}
+                  type="date"
+                  value={endDate}
+                />
+              </div>
+            </div>
+            {isSuperAdmin && (
+              <SearchableSelect
+                id="seriesId"
+                label="Course Series"
+                onChange={setSeriesId}
+                options={seriesOptions}
+                placeholder="No series"
+                value={seriesId}
+              />
+            )}
+            {error && (
+              <Alert type="error" icon={<Icon name="error" className="h-4 w-4" />}>
+                {error}
+              </Alert>
+            )}
+            <Button type="submit" isLoading={savingMeta} loadingLabel="Saving...">
+              Save
+            </Button>
+          </form>
         </div>
         </div>
+
+        <ConfirmDeleteDialog
+          isOpen={confirmDelete !== null}
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={() => {
+            if (confirmDelete?.type === 'course') deleteCourse();
+            if (confirmDelete?.type === 'lesson' && confirmDelete.id) deleteLesson(confirmDelete.id);
+            if (confirmDelete?.type === 'file' && confirmDelete.id) deleteFile(confirmDelete.id);
+          }}
+          title={
+            confirmDelete?.type === 'course'
+              ? 'Delete Course'
+              : confirmDelete?.type === 'lesson'
+                ? 'Delete Lesson'
+                : 'Delete File'
+          }
+          userEmail={user?.email ?? ''}
+        />
       </FeatureGate>
     </AdminLayout>
   );
@@ -368,61 +530,73 @@ export default function EditCoursePage() {
 function LessonEditor({
   courseId,
   lesson,
-  onTogglePublish,
-  onDelete,
   onSaved,
 }: {
   courseId: string;
   lesson: Lesson;
-  onTogglePublish: () => void;
-  onDelete: () => void;
   onSaved: () => void;
 }) {
   const [title, setTitle] = useState(lesson.title);
-  const [coverImageUrl, setCoverImageUrl] = useState(lesson.coverImageUrl ?? '');
   const [duration, setDuration] = useState(formatDuration(lesson.durationSeconds) ?? '');
   const [durationError, setDurationError] = useState('');
   const [videoType, setVideoType] = useState(lesson.videoType);
   const [videoUrl, setVideoUrl] = useState(lesson.videoType === 'EXTERNAL_LINK' ? lesson.videoUrl ?? '' : '');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   const save = async (e: { preventDefault(): void }) => {
     e.preventDefault();
-    const durationSeconds = duration.trim() ? parseDuration(duration) : null;
-    if (duration.trim() && durationSeconds == null) {
+    let durationInput = duration;
+    if (videoType === 'EXTERNAL_LINK' && videoUrl) {
+      const seconds = await fetchVimeoDuration(videoUrl);
+      if (seconds != null) durationInput = formatDuration(seconds) ?? durationInput;
+    }
+    const durationSeconds = durationInput.trim() ? parseDuration(durationInput) : null;
+    if (durationInput.trim() && durationSeconds == null) {
       setDurationError('Use mm:ss or h:mm:ss, e.g. 24:38');
       return;
     }
     setDurationError('');
     setSaving(true);
-    await fetch(`${apiUrl}/courses/${courseId}/lessons/${lesson.id}`, {
-      method: 'PATCH',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, coverImageUrl: coverImageUrl || null, durationSeconds }),
-    });
+    const results = [
+      await fetch(`${apiUrl}/courses/${courseId}/lessons/${lesson.id}`, {
+        method: 'PATCH',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, durationSeconds }),
+      }),
+    ];
 
     if (videoType === 'EXTERNAL_LINK' && videoUrl) {
       const formData = new FormData();
       formData.append('videoType', 'EXTERNAL_LINK');
       formData.append('videoUrl', videoUrl);
-      await fetch(`${apiUrl}/courses/${courseId}/lessons/${lesson.id}/video`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: formData,
-      });
+      results.push(
+        await fetch(`${apiUrl}/courses/${courseId}/lessons/${lesson.id}/video`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: formData,
+        }),
+      );
     } else if (videoType === 'UPLOAD' && videoFile) {
       const formData = new FormData();
       formData.append('videoType', 'UPLOAD');
       formData.append('file', videoFile);
-      await fetch(`${apiUrl}/courses/${courseId}/lessons/${lesson.id}/video`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: formData,
-      });
+      results.push(
+        await fetch(`${apiUrl}/courses/${courseId}/lessons/${lesson.id}/video`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: formData,
+        }),
+      );
     }
 
     setSaving(false);
+    if (results.some((res) => !res.ok)) {
+      toast.saveFailed();
+      return;
+    }
+    toast.saved();
     onSaved();
   };
 
@@ -430,55 +604,44 @@ function LessonEditor({
     <form className="space-y-4 border-t border-slate-100 bg-slate-50 px-4 py-4" onSubmit={save}>
       <Input id={`lesson-title-${lesson.id}`} label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
       <Input
-        id={`lesson-cover-${lesson.id}`}
-        label="Cover Image URL"
-        value={coverImageUrl}
-        onChange={(e) => setCoverImageUrl(e.target.value)}
-      />
-      <Input
         id={`lesson-duration-${lesson.id}`}
         label="Duration"
         value={duration}
         onChange={(e) => setDuration(e.target.value)}
-        placeholder="mm:ss, e.g. 24:38"
+        placeholder="hh:mm:ss, e.g. 1:24:38"
         error={durationError}
       />
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-slate-700">Video</label>
-        <div className="flex items-center gap-4 mb-2 text-sm text-slate-700">
-          <label className="flex items-center gap-1.5">
-            <input
-              type="radio"
-              checked={videoType === 'EXTERNAL_LINK'}
-              onChange={() => setVideoType('EXTERNAL_LINK')}
-            />
-            External link
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input type="radio" checked={videoType === 'UPLOAD'} onChange={() => setVideoType('UPLOAD')} />
-            Upload
-          </label>
-        </div>
+      <div className="space-y-2">
+        <RadioGroup
+          className="hidden"
+          label="Video"
+          name={`lesson-video-type-${lesson.id}`}
+          onChange={(value) => setVideoType(value as 'UPLOAD' | 'EXTERNAL_LINK')}
+          options={[
+            { label: 'External link', value: 'EXTERNAL_LINK' },
+            { label: 'Upload', value: 'UPLOAD' },
+          ]}
+          value={videoType}
+        />
         {videoType === 'EXTERNAL_LINK' ? (
           <Input
             id={`lesson-video-url-${lesson.id}`}
             value={videoUrl}
             onChange={(e) => setVideoUrl(e.target.value)}
+            onBlur={(e) => autofillDurationFromVimeo(e.target.value, setDuration)}
             placeholder="https://vimeo.com/..."
           />
         ) : (
-          <input type="file" accept="video/*" onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)} />
+          <FileUpload
+            accept="video/*"
+            id={`lesson-video-file-${lesson.id}`}
+            onFilesSelected={([file]) => setVideoFile(file ?? null)}
+          />
         )}
       </div>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" size="sm" isLoading={saving} loadingLabel="Saving...">
-          Save Lesson
-        </Button>
-        <Button type="button" size="sm" variant="secondary" onClick={onTogglePublish}>
-          {lesson.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDelete} className="text-red-600 hover:bg-red-50">
-          Delete Lesson
+          Save
         </Button>
       </div>
     </form>

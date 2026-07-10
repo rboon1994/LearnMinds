@@ -112,6 +112,24 @@ async function main() {
       packages: ['PRO', 'ENTERPRISE'],
       status: 'ACTIVE',
     },
+    {
+      name: 'Student Management',
+      key: 'student-management',
+      description: 'Bulk register student accounts',
+      order: 7,
+      isSystem: true,
+      packages: [],
+      status: 'ACTIVE',
+    },
+    {
+      name: 'Enrollment Management',
+      key: 'enrollment-management',
+      description: 'Grant course series access to students and tenants',
+      order: 8,
+      isSystem: true,
+      packages: [],
+      status: 'ACTIVE',
+    },
   ];
   for (const feature of adminFeatures) {
     await prisma.adminFeature.upsert({

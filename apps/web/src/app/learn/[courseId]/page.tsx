@@ -8,12 +8,11 @@ import { Icon } from '@/components/ui/Icon';
 import { VideoPlayer } from '@/components/ui/VideoPlayer';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
-import { formatDuration } from '@/lib/duration';
+import { formatDateRange, formatDuration } from '@/lib/duration';
 
 type Lesson = {
   id: string;
   title: string;
-  coverImageUrl: string | null;
   videoType: 'UPLOAD' | 'EXTERNAL_LINK';
   videoUrl: string | null;
   durationSeconds: number | null;
@@ -28,6 +27,8 @@ type Course = {
   id: string;
   title: string;
   description: string | null;
+  startDate: string | null;
+  endDate: string | null;
   lessons: Lesson[];
   files: CourseFile[];
 };
@@ -141,6 +142,9 @@ export default function CourseDetailPage() {
                 )}
               </div>
               {activeLesson && <h2 className="text-lg font-semibold text-slate-900 mb-1">{activeLesson.title}</h2>}
+              {formatDateRange(course.startDate, course.endDate) && (
+                <p className="text-xs text-slate-400 mb-1">{formatDateRange(course.startDate, course.endDate)}</p>
+              )}
               {course.description && <p className="text-sm text-slate-500">{course.description}</p>}
             </div>
 
@@ -194,7 +198,7 @@ export default function CourseDetailPage() {
                   <h3 className="text-xl font-bold text-slate-900 mb-3">
                     Files <span className="text-sm font-normal text-slate-400">( {course.files.length} )</span>
                   </h3>
-                  <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 max-h-60 overflow-y-auto">
+                  <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 max-h-62 overflow-y-auto">
                     {course.files.map((file) => (
                       <button
                         key={file.id}

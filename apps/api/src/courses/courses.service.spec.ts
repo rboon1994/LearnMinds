@@ -4,13 +4,24 @@ import { CoursesService } from './courses.service';
 // Tenant-scoping is the highest-risk logic in this module: an ADMIN must never read/write
 // another tenant's course, and a USER must never see DRAFT or another tenant's content.
 describe('CoursesService tenant scoping', () => {
-  const admin = { userId: 'admin-1', tenantId: 'tenant-a', role: Role.ADMIN };
+  const admin = {
+    userId: 'admin-1',
+    tenantId: 'tenant-a',
+    studentId: null,
+    role: Role.ADMIN,
+  };
   const superAdmin = {
     userId: 'super-1',
     tenantId: null,
+    studentId: null,
     role: Role.SUPER_ADMIN,
   };
-  const user = { userId: 'user-1', tenantId: 'tenant-a', role: Role.USER };
+  const user = {
+    userId: 'user-1',
+    tenantId: 'tenant-a',
+    studentId: null,
+    role: Role.USER,
+  };
 
   function buildService() {
     const prisma = {

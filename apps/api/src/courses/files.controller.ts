@@ -73,7 +73,7 @@ export class FilesController {
   // Authenticated download — same rationale as the lesson video stream route: never a bare
   // static file, always re-checks course visibility (draft/tenant scoping) first.
   @Get(':id/download')
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.USER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.USER, Role.STUDENT)
   async download(
     @Param('courseId') courseId: string,
     @Param('id') id: string,

@@ -1,14 +1,17 @@
 import { ContentStatus, VideoType } from '@prisma/client';
-import { IsEnum, IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateLessonDto {
   @IsString()
   @MinLength(1)
   title: string;
-
-  @IsString()
-  @IsOptional()
-  coverImageUrl?: string;
 
   @IsEnum(VideoType)
   videoType: VideoType;

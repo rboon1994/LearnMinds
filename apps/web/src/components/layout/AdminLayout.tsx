@@ -11,11 +11,13 @@ function initials(name: string) {
 
 interface AdminLayoutProps {
   title: string;
+  backHref?: string;
+  subtitle?: string;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }
 
-export function AdminLayout({ title, actions, children }: AdminLayoutProps) {
+export function AdminLayout({ title, backHref, subtitle, actions, children }: AdminLayoutProps) {
   const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -26,7 +28,13 @@ export function AdminLayout({ title, actions, children }: AdminLayoutProps) {
     <div className="min-h-screen bg-slate-50 flex">
       <Navigation user={navUser} mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
       <div className="flex-1 min-w-0 flex flex-col">
-        <PageHeader defaultTitle={title} onOpenMobileMenu={() => setMobileMenuOpen(true)} actions={actions}>
+        <PageHeader
+          defaultTitle={title}
+          backHref={backHref}
+          subtitle={subtitle}
+          onOpenMobileMenu={() => setMobileMenuOpen(true)}
+          actions={actions}
+        >
           {children}
         </PageHeader>
       </div>

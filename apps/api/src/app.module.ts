@@ -8,6 +8,10 @@ import { DepartmentsModule } from './departments/departments.module';
 import { NavItemsModule } from './nav-items/nav-items.module';
 import { AdminFeaturesModule } from './admin-features/admin-features.module';
 import { CoursesModule } from './courses/courses.module';
+import { StudentsModule } from './students/students.module';
+import { TenantsModule } from './tenants/tenants.module';
+import { CourseSeriesModule } from './course-series/course-series.module';
+import { EnrollmentsModule } from './enrollments/enrollments.module';
 
 @Module({
   imports: [
@@ -18,9 +22,11 @@ import { CoursesModule } from './courses/courses.module';
     NavItemsModule,
     AdminFeaturesModule,
     CoursesModule,
+    StudentsModule,
+    TenantsModule,
+    CourseSeriesModule,
+    EnrollmentsModule,
   ],
-  providers: [
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
-  ],
+  providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
 export class AppModule {}

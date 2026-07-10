@@ -23,7 +23,7 @@ export type AuthUser = {
   id: string;
   email: string;
   fullName: string;
-  role: 'SUPER_ADMIN' | 'ADMIN' | 'USER';
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'USER' | 'STUDENT';
   tenant: { id: string; name: string; package: string } | null;
   department: { id: string; name: string } | null;
   navItems: NavItem[];

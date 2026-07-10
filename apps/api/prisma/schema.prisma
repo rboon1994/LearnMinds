@@ -11,6 +11,7 @@ enum Role {
   SUPER_ADMIN
   ADMIN
   USER
+  STUDENT
 }
 
 enum Status {
@@ -36,36 +37,52 @@ enum VideoType {
 }
 
 model Tenant {
-  id          String        @id @default(cuid())
-  name        String
-  package     TenantPackage @default(FREE)
-  status      Status        @default(ACTIVE)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  users       User[]
-  departments Department[]
-  courses     Course[]
+  id           String         @id @default(cuid())
+  name         String
+  package      TenantPackage  @default(FREE)
+  status       Status         @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  users        User[]
+  departments  Department[]
+  courses      Course[]
+  enrollments  Enrollment[]
+  courseSeries CourseSeries[]
 }
 
 model User {
-  id                 String      @id @default(cuid())
-  email              String      @unique
+  id                 String       @id @default(cuid())
+  email              String       @unique
   password           String
   fullName           String
   phoneCountryCode   String?
   phoneNo            String?
-  role               Role        @default(USER)
-  status             Status      @default(ACTIVE)
-  mustChangePassword Boolean     @default(false)
+  role               Role         @default(USER)
+  status             Status       @default(ACTIVE)
+  mustChangePassword Boolean      @default(false)
   jobTitle           String?
   lastSignInAt       DateTime?
   tenantId           String?
-  tenant             Tenant?     @relation(fields: [tenantId], references: [id])
+  tenant             Tenant?      @relation(fields: [tenantId], references: [id])
   departmentId       String?
-  department         Department? @relation(fields: [departmentId], references: [id])
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  department         Department?  @relation(fields: [departmentId], references: [id])
+  studentId          String?      @unique
+  student            Student?     @relation(fields: [studentId], references: [id])
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
   coursesCreated     Course[]
+  enrollmentsGranted Enrollment[]
+}
+
+// Thin satellite for the Student "flavor" of a User row (role: STUDENT, tenantId: null) —
+// holds only genuinely Student-specific data as it comes up (none needed yet). Kept separate
+// from User rather than adding nullable Student columns there, per explicit decision.
+model Student {
+  id          String       @id @default(cuid())
+  user        User?
+  enrollments Enrollment[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 }
 
 model Department {
@@ -109,28 +126,45 @@ model AdminFeature {
   updatedAt   DateTime        @updatedAt
 }
 
+// Groups different date-instances of the "same" recurring course (e.g. re-run cohorts).
+// Enrollment grants access at this level — enrolling in a series unlocks every Course under it.
+model CourseSeries {
+  id          String       @id @default(cuid())
+  name        String
+  tenantId    String?
+  tenant      Tenant?      @relation(fields: [tenantId], references: [id])
+  courses     Course[]
+  enrollments Enrollment[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
 model Course {
-  id            String        @id @default(cuid())
-  title         String
-  description   String?
-  coverImageUrl String?
-  status        ContentStatus @default(DRAFT)
-  tenantId      String?
-  tenant        Tenant?       @relation(fields: [tenantId], references: [id])
-  createdById   String?
-  createdBy     User?         @relation(fields: [createdById], references: [id])
-  lessons       Lesson[]
-  files         CourseFile[]
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  thumbnail   String?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      ContentStatus @default(DRAFT)
+  tenantId    String?
+  tenant      Tenant?       @relation(fields: [tenantId], references: [id])
+  seriesId    String?
+  series      CourseSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  createdById String?
+  createdBy   User?         @relation(fields: [createdById], references: [id])
+  lessons     Lesson[]
+  files       CourseFile[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   @@index([tenantId])
+  @@index([seriesId])
 }
 
 model Lesson {
   id              String        @id @default(cuid())
   title           String
-  coverImageUrl   String?
   courseId        String
   course          Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
   order           Int           @default(0)
@@ -155,4 +189,29 @@ model CourseFile {
   createdAt DateTime @default(now())
 
   @@index([courseId])
+}
+
+// Access-grant record only (no payment/order fields this round). Targets a CourseSeries (not an
+// individual dated Course row) — enrolling grants access to every Course under that series, so
+// a newly-added re-run of the same series is immediately visible without a new Enrollment.
+// Exactly one of studentId/tenantId must be set — enforced in EnrollmentsService, not
+// declaratively expressible here.
+model Enrollment {
+  id           String       @id @default(cuid())
+  seriesId     String
+  series       CourseSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  studentId    String?
+  student      Student?     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tenantId     String?
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  enrolledById String
+  enrolledBy   User         @relation(fields: [enrolledById], references: [id])
+  expiresAt    DateTime?
+  createdAt    DateTime     @default(now())
+
+  @@unique([seriesId, studentId])
+  @@unique([seriesId, tenantId])
+  @@index([studentId])
+  @@index([tenantId])
+  @@index([seriesId])
 }

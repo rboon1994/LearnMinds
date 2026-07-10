@@ -1,7 +1,7 @@
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react';
 import Link from 'next/link';
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'gradient';
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'gradient' | 'danger';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -22,6 +22,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   secondary: 'border border-slate-300 bg-white text-slate-900 shadow-sm hover:bg-slate-50 focus:ring-indigo-500',
   ghost: 'border border-transparent bg-transparent text-slate-700 hover:bg-slate-100 focus:ring-indigo-500',
   gradient: 'relative overflow-hidden bg-gradient-to-r from-[#7ED957] via-[#4ECDC4] to-[#007BFF] bg-[length:200%_200%] text-white border border-transparent shadow-lg transition-all duration-300 animate-gradient hover:-translate-y-0.5 hover:shadow-xl hover:shadow-teal-500/25 focus:ring-teal-500',
+  danger: 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 focus:ring-red-500',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {

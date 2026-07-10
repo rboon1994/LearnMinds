@@ -6,6 +6,20 @@ import type { Actor } from './courses.service';
 import { CoursesService } from './courses.service';
 import type { CreateLessonDto } from './dto/create-lesson.dto';
 
+// Vimeo's plain watch-page link (vimeo.com/<id>) can't be embedded in an <iframe> — only the
+// player link (player.vimeo.com/video/<id>) can. Rewrite watch-page links so editors can paste
+// whatever Vimeo gives them to share. A private-link hash segment (vimeo.com/<id>/<hash>) is
+// carried over as the player's `h` query param. Any other URL (already a player link, YouTube,
+// etc.) passes through unchanged.
+function normalizeVimeoUrl(url: string): string {
+  const match = url.match(/vimeo\.com\/(\d+)(?:\/([a-zA-Z0-9]+))?/);
+  if (!match) return url;
+  const [, id, hash] = match;
+  return hash
+    ? `https://player.vimeo.com/video/${id}?h=${hash}`
+    : `https://player.vimeo.com/video/${id}`;
+}
+
 @Injectable()
 export class LessonsService {
   constructor(
@@ -21,7 +35,15 @@ export class LessonsService {
       _max: { order: true },
     });
     return this.prisma.lesson.create({
-      data: { ...dto, courseId, order: (last._max.order ?? -1) + 1 },
+      data: {
+        ...dto,
+        videoUrl:
+          dto.videoType === VideoType.EXTERNAL_LINK && dto.videoUrl
+            ? normalizeVimeoUrl(dto.videoUrl)
+            : dto.videoUrl,
+        courseId,
+        order: (last._max.order ?? -1) + 1,
+      },
     });
   }
 
@@ -86,7 +108,13 @@ export class LessonsService {
     }
     return this.prisma.lesson.update({
       where: { id: lessonId },
-      data: { videoType, videoUrl },
+      data: {
+        videoType,
+        videoUrl:
+          videoType === VideoType.EXTERNAL_LINK
+            ? normalizeVimeoUrl(videoUrl)
+            : videoUrl,
+      },
     });
   }
 

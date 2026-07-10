@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { PasswordInput } from '@/components/ui/PasswordInput';
+import { useToast } from '@/components/ui/Toast';
 import { apiUrl } from '@/lib/api';
 import { landingRoute } from '@/lib/nav';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,6 +22,7 @@ type LoginFormData = {
 
 export default function LoginPage() {
   const { user, loading } = useAuth();
+  const toast = useToast();
   const router = useRouter();
   const [formData, setFormData] = useState<LoginFormData>({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
@@ -65,6 +67,11 @@ export default function LoginPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
+        if (response.status === 403 && errorData.message === 'Account is not active') {
+          toast.accountInactive();
+          setIsLoading(false);
+          return;
+        }
         throw new Error(errorData.message || 'Login failed');
       }
 

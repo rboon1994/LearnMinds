@@ -118,7 +118,7 @@ export class LessonsController {
   // since draft/tenant-scoped videos must not be reachable by a guessable public URL.
   // Reachable by any authenticated role (Role.USER included) that can see the course.
   @Get(':id/video')
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.USER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.USER, Role.STUDENT)
   async streamVideo(
     @Param('courseId') courseId: string,
     @Param('id') id: string,

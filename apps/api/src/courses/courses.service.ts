@@ -3,7 +3,19 @@ import { ContentStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateCourseDto } from './dto/create-course.dto';
 
-export type Actor = { userId: string; tenantId: string | null; role: Role };
+export type Actor = {
+  userId: string;
+  tenantId: string | null;
+  studentId: string | null;
+  role: Role;
+};
+
+// <input type="date"> sends a bare "YYYY-MM-DD", but Prisma's DateTime column requires a full
+// ISO-8601 datetime — passing the bare date straight through throws "premature end of input".
+function toDate(value: string | null | undefined) {
+  if (value === undefined) return undefined;
+  return value === null ? null : new Date(value);
+}
 
 @Injectable()
 export class CoursesService {
@@ -63,6 +75,8 @@ export class CoursesService {
     return this.prisma.course.create({
       data: {
         ...dto,
+        startDate: toDate(dto.startDate),
+        endDate: toDate(dto.endDate),
         tenantId: actor.role === Role.SUPER_ADMIN ? null : actor.tenantId,
         createdById: actor.userId,
       },
@@ -71,7 +85,14 @@ export class CoursesService {
 
   async update(id: string, dto: Partial<CreateCourseDto>, actor: Actor) {
     await this.assertManageable(id, actor);
-    return this.prisma.course.update({ where: { id }, data: dto });
+    return this.prisma.course.update({
+      where: { id },
+      data: {
+        ...dto,
+        startDate: toDate(dto.startDate),
+        endDate: toDate(dto.endDate),
+      },
+    });
   }
 
   async delete(id: string, actor: Actor) {
@@ -90,10 +111,27 @@ export class CoursesService {
 
   // Read-visibility rules, shared by findOne/assertVisible/findBrowsable: Admin sees their
   // tenant's courses (draft+published), Super Admin sees everything (including every tenant's
-  // drafts — no filter at all), everyone else (USER) only sees published tenant-or-global courses.
+  // drafts — no filter at all), Student sees only currently-enrolled+published (never Draft, never
+  // "all global courses" — must be explicitly assigned by Super Admin via a CourseSeries
+  // enrollment; a course with no series can never be Student-visible), everyone else (USER) only
+  // sees published tenant-or-global courses.
   private visibilityWhere(actor: Actor) {
     if (actor.role === Role.SUPER_ADMIN) return {};
     if (actor.role === Role.ADMIN) return { tenantId: actor.tenantId };
+    if (actor.role === Role.STUDENT) {
+      const now = new Date();
+      return {
+        status: ContentStatus.PUBLISHED,
+        series: {
+          enrollments: {
+            some: {
+              studentId: actor.studentId,
+              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+            },
+          },
+        },
+      };
+    }
     return {
       status: ContentStatus.PUBLISHED,
       OR: [{ tenantId: actor.tenantId }, { tenantId: null }],

@@ -1,4 +1,9 @@
-import { ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { Role, Status, Tenant } from '@prisma/client';
@@ -15,21 +20,26 @@ export class AuthService {
   async validateUser(email: string, password: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) throw new UnauthorizedException('Invalid credentials');
-    if (user.status === 'SUSPENDED') throw new ForbiddenException('Account suspended');
+    if (user.status !== Status.ACTIVE)
+      throw new ForbiddenException('Account is not active');
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
     return user;
   }
 
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const existing = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (existing) throw new ConflictException('Email already registered');
 
     const hashed = await bcrypt.hash(dto.password, 10);
     const now = new Date();
 
     const user = await this.prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.create({ data: { name: dto.organization } });
+      const tenant = await tx.tenant.create({
+        data: { name: dto.organization },
+      });
       return tx.user.create({
         data: {
           fullName: dto.fullName.trim(),
@@ -47,7 +57,13 @@ export class AuthService {
     return { access_token: this.sign(user) };
   }
 
-  async login(user: { id: string; tenantId: string; email: string; role: string }) {
+  async login(user: {
+    id: string;
+    tenantId: string | null;
+    studentId: string | null;
+    email: string;
+    role: string;
+  }) {
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastSignInAt: new Date() },
@@ -65,10 +81,28 @@ export class AuthService {
         role: true,
         tenantId: true,
         departmentId: true,
+        studentId: true,
         tenant: { select: { id: true, name: true, package: true } },
         department: { select: { id: true, name: true } },
       },
     });
+
+    // Students have no Tenant/Department to derive nav/admin-features from — fixed shape instead.
+    if (user.role === Role.STUDENT) {
+      return {
+        ...user,
+        navItems: [
+          {
+            id: 'learn',
+            name: 'My Courses',
+            href: '/learn',
+            icon: 'book',
+            order: 0,
+          },
+        ],
+        adminFeatures: [],
+      };
+    }
 
     const [navItems, adminFeatures] = await Promise.all([
       this.getNavItems(user, user.tenant),
@@ -91,11 +125,16 @@ export class AuthService {
       return this.prisma.navItem.findMany({ orderBy: { order: 'asc' } });
     }
     if (user.role === Role.ADMIN) {
-      return this.prisma.navItem.findMany({ where: baseWhere, orderBy: { order: 'asc' } });
+      return this.prisma.navItem.findMany({
+        where: baseWhere,
+        orderBy: { order: 'asc' },
+      });
     }
     // USER
     if (!user.departmentId) return [];
-    const dept = await this.prisma.department.findUniqueOrThrow({ where: { id: user.departmentId } });
+    const dept = await this.prisma.department.findUniqueOrThrow({
+      where: { id: user.departmentId },
+    });
     return this.prisma.navItem.findMany({
       where: {
         ...baseWhere,
@@ -116,16 +155,31 @@ export class AuthService {
       orderBy: { order: 'asc' },
     });
     if (user.role === Role.SUPER_ADMIN) {
-      return features.map((f) => ({ ...f, featureStatus: 'available' as const }));
+      return features.map((f) => ({
+        ...f,
+        featureStatus: 'available' as const,
+      }));
     }
     const pkg = tenant!.package;
     return features.map((f) => ({
       ...f,
-      featureStatus: (f.packages.includes(pkg) ? 'available' : 'locked') as 'available' | 'locked',
+      featureStatus: f.packages.includes(pkg) ? 'available' : 'locked',
     }));
   }
 
-  private sign(user: { id: string; tenantId: string | null; email: string; role: string }) {
-    return this.jwt.sign({ sub: user.id, tenantId: user.tenantId, email: user.email, role: user.role });
+  private sign(user: {
+    id: string;
+    tenantId: string | null;
+    studentId: string | null;
+    email: string;
+    role: string;
+  }) {
+    return this.jwt.sign({
+      sub: user.id,
+      tenantId: user.tenantId,
+      studentId: user.studentId,
+      email: user.email,
+      role: user.role,
+    });
   }
 }
