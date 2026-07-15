@@ -108,7 +108,7 @@ export function PhoneField({
       <div
         className={`flex w-full rounded-xl border transition-all ${
           error ? 'border-red-300' : 'border-slate-300'
-        } bg-white focus-within:border-transparent focus-within:ring-2 focus-within:ring-indigo-500`}
+        } bg-white focus-within:border-teal-400 focus-within:ring-4 focus-within:ring-teal-400/10`}
       >
         <PhoneInput
           inputProps={{ id }}

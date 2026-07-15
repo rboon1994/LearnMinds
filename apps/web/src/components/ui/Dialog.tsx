@@ -98,3 +98,48 @@ export function ConfirmDeleteDialog({ isOpen, onClose, onConfirm, title, userEma
     </div>
   );
 }
+
+type ConfirmDialogProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+};
+
+// Lightweight, non-destructive confirmation: plain Confirm/Cancel, no typed-input gate.
+// Reserved for actions that are impactful but reversible (e.g. reset password) — for
+// irreversible deletes, use ConfirmDeleteDialog instead.
+export function ConfirmDialog({ isOpen, onClose, onConfirm, title, description, confirmLabel = 'Confirm' }: ConfirmDialogProps) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+              <Icon name="warning" className="h-5 w-5" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+          </div>
+          <button className="text-slate-400 hover:text-slate-700" onClick={onClose} type="button">
+            <Icon className="h-5 w-5" name="x" />
+          </button>
+        </div>
+        <p className="mb-4 text-sm text-slate-600">{description}</p>
+        <Button
+          className="w-full border-transparent bg-amber-500 text-white hover:bg-amber-600"
+          onClick={() => {
+            onConfirm();
+            onClose();
+          }}
+        >
+          {confirmLabel}
+        </Button>
+      </div>
+    </div>
+  );
+}

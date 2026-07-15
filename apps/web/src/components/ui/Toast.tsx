@@ -12,6 +12,7 @@ type ToastItem = { id: number; type: ToastType; message: string };
 type ToastContextValue = {
   saved: () => void;
   deleted: () => void;
+  reset: () => void;
   saveFailed: () => void;
   deleteFailed: () => void;
   accountInactive: () => void;
@@ -38,6 +39,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const value: ToastContextValue = {
     saved: () => push('success', 'Saved Successfully'),
     deleted: () => push('success', 'Deleted Successfully'),
+    reset: () => push('success', 'Reset Successfully'),
     saveFailed: () => push('error', 'Failed to Save'),
     deleteFailed: () => push('error', 'Failed to Delete'),
     accountInactive: () => push('error', 'Account is not active'),

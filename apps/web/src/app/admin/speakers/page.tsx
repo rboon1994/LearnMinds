@@ -7,13 +7,19 @@ import { AdminTable } from '@/components/ui/AdminTable';
 import type { AdminTableColumn } from '@/components/ui/AdminTable';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { Dialog } from '@/components/ui/Dialog';
+import { ConfirmDeleteDialog, Dialog } from '@/components/ui/Dialog';
 import { FeatureGate } from '@/components/ui/FeatureGate';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
+import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
+
+function authHeaders() {
+  const token = localStorage.getItem('token');
+  return { Authorization: `Bearer ${token}` };
+}
 
 type Speaker = {
   id: string;
@@ -26,6 +32,7 @@ type Speaker = {
 export default function AdminSpeakersPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const toast = useToast();
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
 
   const [searchName, setSearchName] = useState('');
@@ -42,16 +49,16 @@ export default function AdminSpeakersPage() {
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
-  useEffect(() => {
-    const handle = setTimeout(() => setDebouncedSearch(searchName.trim()), 300);
-    return () => clearTimeout(handle);
-  }, [searchName]);
+  const [editingSpeaker, setEditingSpeaker] = useState<Speaker | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editThumbnail, setEditThumbnail] = useState('');
+  const [editError, setEditError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  useEffect(() => {
-    if (user && user.role !== 'SUPER_ADMIN') {
-      router.replace('/admin');
-      return;
-    }
+  const fetchSpeakers = () => {
     const token = localStorage.getItem('token');
     if (!token) return;
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
@@ -63,6 +70,20 @@ export default function AdminSpeakersPage() {
         setTotal(res.total);
       })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchName.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchName]);
+
+  useEffect(() => {
+    if (user && user.role !== 'SUPER_ADMIN') {
+      router.replace('/admin');
+      return;
+    }
+    fetchSpeakers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, router, page, debouncedSearch]);
 
   const columns: AdminTableColumn<Speaker>[] = [
@@ -126,8 +147,67 @@ export default function AdminSpeakersPage() {
       setCreateError('Failed to create speaker');
       return;
     }
-    const speaker = await res.json();
-    router.push(`/admin/speakers/${speaker.id}`);
+    await res.json();
+    closeCreateDialog();
+    fetchSpeakers();
+  };
+
+  const openEditDialog = (speaker: Speaker) => {
+    setEditingSpeaker(speaker);
+    setEditName(speaker.name);
+    setEditTitle(speaker.title);
+    setEditDescription(speaker.description ?? '');
+    setEditThumbnail(speaker.thumbnail ?? '');
+    setEditError('');
+  };
+
+  const closeEditDialog = () => {
+    setEditingSpeaker(null);
+    setConfirmDelete(false);
+  };
+
+  const saveSpeaker = async (e: { preventDefault(): void }) => {
+    e.preventDefault();
+    if (!editingSpeaker) return;
+    if (!editName.trim() || !editTitle.trim()) {
+      setEditError('Name and title are required');
+      return;
+    }
+    setIsSaving(true);
+    setEditError('');
+    const res = await fetch(`${apiUrl}/speakers/${editingSpeaker.id}`, {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: editName,
+        title: editTitle,
+        description: editDescription || null,
+        thumbnail: editThumbnail || null,
+      }),
+    });
+    setIsSaving(false);
+    if (!res.ok) {
+      toast.saveFailed();
+      return;
+    }
+    toast.saved();
+    closeEditDialog();
+    fetchSpeakers();
+  };
+
+  const deleteSpeaker = async () => {
+    if (!editingSpeaker) return;
+    const res = await fetch(`${apiUrl}/speakers/${editingSpeaker.id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    if (!res.ok) {
+      toast.deleteFailed();
+      return;
+    }
+    toast.deleted();
+    closeEditDialog();
+    fetchSpeakers();
   };
 
   if (user && user.role !== 'SUPER_ADMIN') return null;
@@ -147,7 +227,7 @@ export default function AdminSpeakersPage() {
           columns={columns}
           data={speakers}
           keyField="id"
-          onRowClick={(speaker) => router.push(`/admin/speakers/${speaker.id}`)}
+          onRowClick={openEditDialog}
           emptyMessage={total === 0 && !debouncedSearch ? 'No speakers yet.' : 'No speakers match your search.'}
           pagination={{ page, pageSize, total, onPageChange: setPage }}
           toolbar={
@@ -206,6 +286,59 @@ export default function AdminSpeakersPage() {
           </Button>
         </form>
       </Dialog>
+
+      <Dialog isOpen={editingSpeaker !== null} onClose={closeEditDialog} title="Edit Speaker">
+        <form className="space-y-5" onSubmit={saveSpeaker} noValidate>
+          <Input id="editName" label="Name" onChange={(e) => setEditName(e.target.value)} required value={editName} />
+          <Input
+            id="editTitle"
+            label="Title"
+            onChange={(e) => setEditTitle(e.target.value)}
+            required
+            value={editTitle}
+          />
+          <Textarea
+            id="editDescription"
+            label="Description"
+            onChange={(e) => setEditDescription(e.target.value)}
+            rows={4}
+            value={editDescription}
+          />
+          <Input
+            id="editThumbnail"
+            label="Thumbnail"
+            onChange={(e) => setEditThumbnail(e.target.value)}
+            placeholder="https://..."
+            value={editThumbnail}
+          />
+          {editError && (
+            <Alert type="error" icon={<Icon name="error" className="h-4 w-4" />}>
+              {editError}
+            </Alert>
+          )}
+          <div className="flex gap-3">
+            <Button type="submit" isLoading={isSaving} loadingLabel="Saving...">
+              Save
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => setConfirmDelete(true)}
+              leftIcon={<Icon name="trash" className="h-4 w-4 mr-1.5" />}
+            >
+              Delete
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      <ConfirmDeleteDialog
+        isOpen={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={deleteSpeaker}
+        title="Delete Speaker"
+        userEmail={user?.email ?? ''}
+      />
     </AdminLayout>
   );
 }

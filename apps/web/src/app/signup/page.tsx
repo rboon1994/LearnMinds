@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { PhoneField } from '@/components/ui/PhoneField';
 import { apiUrl } from '@/lib/api';
+import { parsePhone } from '@/lib/phone';
 
 type SignupFormData = {
   name: string;
@@ -22,14 +23,6 @@ type SignupFormData = {
   password: string;
   confirmPassword: string;
 };
-
-// Split E.164 "+60162809580" using the known dialCode "60" → { phoneCountryCode: "60", phoneNo: "162809580" }
-function parsePhone(raw: string, dialCode: string): { phoneCountryCode: string; phoneNo: string } {
-  const normalized = raw.replace(/\s/g, '');
-  const prefix = `+${dialCode}`;
-  if (!normalized.startsWith(prefix)) return { phoneCountryCode: '', phoneNo: '' };
-  return { phoneCountryCode: dialCode, phoneNo: normalized.slice(prefix.length) };
-}
 
 export default function SignupPage() {
   const [formData, setFormData] = useState<SignupFormData>({
