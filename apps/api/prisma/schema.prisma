@@ -151,6 +151,7 @@ model Course {
   tenant      Tenant?       @relation(fields: [tenantId], references: [id])
   seriesId    String?
   series      CourseSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  speakers    Speaker[]
   createdById String?
   createdBy   User?         @relation(fields: [createdById], references: [id])
   lessons     Lesson[]
@@ -160,6 +161,17 @@ model Course {
 
   @@index([tenantId])
   @@index([seriesId])
+}
+
+model Speaker {
+  id          String   @id @default(cuid())
+  name        String
+  title       String?
+  description String?
+  thumbnail   String?
+  courses     Course[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Lesson {

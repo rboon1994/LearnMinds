@@ -17,8 +17,8 @@ export function Dialog({ children, isOpen, onClose, title }: DialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+        <div className="mb-4 flex shrink-0 items-center justify-between">
           {title && <h3 className="text-lg font-semibold text-slate-900">{title}</h3>}
           <button
             className="ml-auto text-slate-400 hover:text-slate-700"
@@ -28,7 +28,7 @@ export function Dialog({ children, isOpen, onClose, title }: DialogProps) {
             <Icon className="h-5 w-5" name="x" />
           </button>
         </div>
-        {children}
+        <div className="overflow-y-auto">{children}</div>
       </div>
     </div>
   );

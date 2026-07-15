@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -15,6 +16,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AdminFeatureGuard } from '../auth/guards/admin-feature.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CoursesService } from './courses.service';
+import { CoursesQueryDto } from './dto/courses-query.dto';
 import { CreateCourseDto } from './dto/create-course.dto';
 
 export type AuthReq = {
@@ -38,14 +40,14 @@ export class CoursesController {
   @Get('admin')
   @UseGuards(AdminFeatureGuard)
   @RequireFeature('course-management')
-  findAllForAdmin(@Request() req: AuthReq) {
-    return this.svc.findAllForAdmin(req.user.tenantId as string);
+  findAllForAdmin(@Query() query: CoursesQueryDto, @Request() req: AuthReq) {
+    return this.svc.findAllForAdmin(req.user.tenantId as string, query);
   }
 
   @Get('admin/all')
   @Roles(Role.SUPER_ADMIN)
-  findAllForSuperAdmin() {
-    return this.svc.findAllForSuperAdmin();
+  findAllForSuperAdmin(@Query() query: CoursesQueryDto) {
+    return this.svc.findAllForSuperAdmin(query);
   }
 
   @Get()

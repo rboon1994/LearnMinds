@@ -63,7 +63,7 @@ export default function AdminFeaturesPage() {
     <div className="p-8">
       <h1 className="text-2xl font-bold text-slate-900 mb-6">Admin Feature Access</h1>
       <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <div className="min-w-[640px] text-sm">
+        <div className="min-w-160 text-sm">
           <div className="flex items-center px-4 py-3 bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
             <div className="w-8 shrink-0" />
             <div className="flex-1">Feature</div>

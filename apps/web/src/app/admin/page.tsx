@@ -15,6 +15,7 @@ const FEATURE_META: Record<string, { href: string; icon: IconName; color: string
   'course-management': { href: '/admin/courses', icon: 'video', color: 'bg-pink-50', subtitle: 'Manage courses and lessons' },
   'student-management': { href: '/admin/students', icon: 'user', color: 'bg-sky-50', subtitle: 'Bulk register student accounts' },
   'enrollment-management': { href: '/admin/enrollments', icon: 'check-circle', color: 'bg-emerald-50', subtitle: 'Grant course series access' },
+  'speaker-management': { href: '/admin/speakers', icon: 'user', color: 'bg-cyan-50', subtitle: 'Manage event speakers' },
 };
 
 // Fallback for any AdminFeature without a matching route/icon above — keeps it

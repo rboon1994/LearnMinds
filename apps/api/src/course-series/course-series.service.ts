@@ -13,16 +13,27 @@ export class CourseSeriesService {
     });
   }
 
-  create(dto: CreateCourseSeriesDto) {
+  async create(dto: CreateCourseSeriesDto) {
+    await this.assertNameAvailable(dto.name);
     return this.prisma.courseSeries.create({ data: { name: dto.name } });
   }
 
   async update(id: string, dto: CreateCourseSeriesDto) {
     await this.prisma.courseSeries.findUniqueOrThrow({ where: { id } });
+    await this.assertNameAvailable(dto.name, id);
     return this.prisma.courseSeries.update({
       where: { id },
       data: { name: dto.name },
     });
+  }
+
+  private async assertNameAvailable(name: string, excludeId?: string) {
+    const existing = await this.prisma.courseSeries.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' } },
+    });
+    if (existing && existing.id !== excludeId) {
+      throw new ConflictException('A series with this name already exists');
+    }
   }
 
   async delete(id: string) {

@@ -130,6 +130,15 @@ async function main() {
       packages: [],
       status: 'ACTIVE',
     },
+    {
+      name: 'Speaker Management',
+      key: 'speaker-management',
+      description: 'Manage event speakers',
+      order: 9,
+      isSystem: true,
+      packages: [],
+      status: 'ACTIVE',
+    },
   ];
   for (const feature of adminFeatures) {
     await prisma.adminFeature.upsert({

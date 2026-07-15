@@ -12,6 +12,7 @@ import { StudentsModule } from './students/students.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { CourseSeriesModule } from './course-series/course-series.module';
 import { EnrollmentsModule } from './enrollments/enrollments.module';
+import { SpeakersModule } from './speakers/speakers.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { EnrollmentsModule } from './enrollments/enrollments.module';
     TenantsModule,
     CourseSeriesModule,
     EnrollmentsModule,
+    SpeakersModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })

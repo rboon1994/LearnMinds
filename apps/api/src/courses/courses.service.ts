@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ContentStatus, Role } from '@prisma/client';
+import { ContentStatus, Prisma, Role } from '@prisma/client';
+import { paginate } from '../common/paginate';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateCourseDto } from './dto/create-course.dto';
+import type { CoursesQueryDto } from './dto/courses-query.dto';
 
 export type Actor = {
   userId: string;
@@ -9,6 +11,28 @@ export type Actor = {
   studentId: string | null;
   role: Role;
 };
+
+type CourseAdminRow = Prisma.CourseGetPayload<{
+  include: {
+    _count: { select: { lessons: true; files: true } };
+    series: { select: { id: true; name: true } };
+  };
+}>;
+
+type CourseSuperAdminRow = Prisma.CourseGetPayload<{
+  include: {
+    _count: { select: { lessons: true; files: true } };
+    tenant: { select: { id: true; name: true } };
+    series: { select: { id: true; name: true } };
+  };
+}>;
+
+function searchFilterWhere(query: CoursesQueryDto): Prisma.CourseWhereInput {
+  return {
+    ...(query.search ? { title: { contains: query.search, mode: 'insensitive' } } : {}),
+    ...(query.seriesId ? { seriesId: query.seriesId } : {}),
+  };
+}
 
 // <input type="date"> sends a bare "YYYY-MM-DD", but Prisma's DateTime column requires a full
 // ISO-8601 datetime — passing the bare date straight through throws "premature end of input".
@@ -22,23 +46,36 @@ export class CoursesService {
   constructor(private prisma: PrismaService) {}
 
   // Admin: own tenant only, draft + published (decision 3 — any admin in the tenant sees everything).
-  findAllForAdmin(tenantId: string) {
-    return this.prisma.course.findMany({
-      where: { tenantId },
-      include: { _count: { select: { lessons: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
+  findAllForAdmin(tenantId: string, query: CoursesQueryDto) {
+    return paginate<CourseAdminRow, Prisma.CourseWhereInput>(
+      this.prisma.course,
+      {
+        where: { tenantId, ...searchFilterWhere(query) },
+        include: {
+          _count: { select: { lessons: true, files: true } },
+          series: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      },
+      { page: query.page, pageSize: query.pageSize },
+    );
   }
 
   // Super Admin: every tenant's courses plus global ones.
-  findAllForSuperAdmin() {
-    return this.prisma.course.findMany({
-      include: {
-        _count: { select: { lessons: true } },
-        tenant: { select: { id: true, name: true } },
+  findAllForSuperAdmin(query: CoursesQueryDto) {
+    return paginate<CourseSuperAdminRow, Prisma.CourseWhereInput>(
+      this.prisma.course,
+      {
+        where: searchFilterWhere(query),
+        include: {
+          _count: { select: { lessons: true, files: true } },
+          tenant: { select: { id: true, name: true } },
+          series: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
       },
-      orderBy: { createdAt: 'desc' },
-    });
+      { page: query.page, pageSize: query.pageSize },
+    );
   }
 
   // Role-aware browse list for /learn: Super Admin sees every course including drafts (the
@@ -49,7 +86,10 @@ export class CoursesService {
   findBrowsable(actor: Actor) {
     return this.prisma.course.findMany({
       where: this.visibilityWhere(actor),
-      include: { _count: { select: { lessons: true } } },
+      include: {
+        _count: { select: { lessons: true } },
+        speakers: { select: { id: true, name: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -57,7 +97,11 @@ export class CoursesService {
   async findOne(id: string, actor: Actor) {
     const course = await this.prisma.course.findFirstOrThrow({
       where: { id, ...this.visibilityWhere(actor) },
-      include: { lessons: { orderBy: { order: 'asc' } }, files: true },
+      include: {
+        lessons: { orderBy: { order: 'asc' } },
+        files: true,
+        speakers: { select: { id: true, name: true } },
+      },
     });
     return course;
   }
@@ -72,25 +116,34 @@ export class CoursesService {
   }
 
   async create(dto: CreateCourseDto, actor: Actor) {
+    const { speakerIds, ...rest } = dto;
     return this.prisma.course.create({
       data: {
-        ...dto,
+        ...rest,
         startDate: toDate(dto.startDate),
         endDate: toDate(dto.endDate),
         tenantId: actor.role === Role.SUPER_ADMIN ? null : actor.tenantId,
         createdById: actor.userId,
+        speakers: speakerIds
+          ? { connect: speakerIds.map((id) => ({ id })) }
+          : undefined,
       },
     });
   }
 
   async update(id: string, dto: Partial<CreateCourseDto>, actor: Actor) {
     await this.assertManageable(id, actor);
+    const { speakerIds, ...rest } = dto;
     return this.prisma.course.update({
       where: { id },
       data: {
-        ...dto,
+        ...rest,
         startDate: toDate(dto.startDate),
         endDate: toDate(dto.endDate),
+        // set (not connect) so re-saving with a shorter list actually drops the removed speakers.
+        speakers: speakerIds
+          ? { set: speakerIds.map((id) => ({ id })) }
+          : undefined,
       },
     });
   }

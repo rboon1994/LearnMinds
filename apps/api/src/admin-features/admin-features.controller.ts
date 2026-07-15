@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { Role, TenantPackage } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -38,7 +47,10 @@ export class AdminFeaturesController {
   }
 
   @Patch(':id/packages')
-  updatePackages(@Param('id') id: string, @Body('packages') packages: TenantPackage[]) {
+  updatePackages(
+    @Param('id') id: string,
+    @Body('packages') packages: TenantPackage[],
+  ) {
     return this.svc.updatePackages(id, packages);
   }
 }

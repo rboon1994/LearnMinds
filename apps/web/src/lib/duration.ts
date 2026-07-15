@@ -27,10 +27,11 @@ export function formatDateRange(startDate: string | null, endDate: string | null
   if (!end || start.getTime() === end.getTime()) {
     return start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   }
-  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const sameMonth = sameYear && start.getMonth() === end.getMonth();
   const startLabel = sameMonth
     ? String(start.getDate())
-    : start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    : start.toLocaleDateString('en-GB', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
   const endLabel = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  return `${startLabel}-${endLabel}`;
+  return `${startLabel} - ${endLabel}`;
 }

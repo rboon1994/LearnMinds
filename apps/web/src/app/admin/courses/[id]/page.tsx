@@ -46,6 +46,7 @@ type Course = {
   startDate: string | null;
   endDate: string | null;
   seriesId: string | null;
+  speakers: { id: string; name: string }[];
   status: 'DRAFT' | 'PUBLISHED';
   lessons: Lesson[];
   files: CourseFile[];
@@ -94,6 +95,8 @@ export default function EditCoursePage() {
   );
   const [seriesId, setSeriesId] = useState('');
   const [seriesOptions, setSeriesOptions] = useState<{ value: string; label: string }[]>([]);
+  const [speakerIds, setSpeakerIds] = useState<string[]>([]);
+  const [speakerOptions, setSpeakerOptions] = useState<{ value: string; label: string }[]>([]);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
   const [isAddLessonOpen, setIsAddLessonOpen] = useState(false);
@@ -115,6 +118,7 @@ export default function EditCoursePage() {
         setStartDate(data.startDate?.slice(0, 10) ?? '');
         setEndDate(data.endDate?.slice(0, 10) ?? '');
         setSeriesId(data.seriesId ?? '');
+        setSpeakerIds(data.speakers.map((s) => s.id));
       })
       .catch(() => setError('Failed to load course'));
   };
@@ -131,6 +135,12 @@ export default function EditCoursePage() {
         .then((r) => r.json())
         .then((data: { id: string; name: string }[]) =>
           setSeriesOptions(data.map((s) => ({ value: s.id, label: s.name }))),
+        )
+        .catch(() => {});
+      fetch(`${apiUrl}/speakers`, { headers: authHeaders() })
+        .then((r) => r.json())
+        .then((data: { id: string; name: string }[]) =>
+          setSpeakerOptions(data.map((s) => ({ value: s.id, label: s.name }))),
         )
         .catch(() => {});
     }
@@ -154,6 +164,7 @@ export default function EditCoursePage() {
         startDate: startDate || null,
         endDate: endDate || null,
         seriesId: seriesId || null,
+        speakerIds,
       }),
     });
     setSavingMeta(false);
@@ -491,6 +502,17 @@ export default function EditCoursePage() {
                 options={seriesOptions}
                 placeholder="No series"
                 value={seriesId}
+              />
+            )}
+            {isSuperAdmin && (
+              <SearchableSelect
+                id="speakerIds"
+                label="Speaker"
+                multiple
+                onChange={setSpeakerIds}
+                options={speakerOptions}
+                placeholder="No speaker"
+                value={speakerIds}
               />
             )}
             {error && (

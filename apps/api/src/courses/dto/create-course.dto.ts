@@ -1,5 +1,6 @@
 import { ContentStatus } from '@prisma/client';
 import {
+  IsArray,
   IsDateString,
   IsEnum,
   IsOptional,
@@ -36,4 +37,9 @@ export class CreateCourseDto {
   @IsString()
   @IsOptional()
   seriesId?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  speakerIds?: string[];
 }

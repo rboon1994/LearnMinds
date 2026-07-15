@@ -16,13 +16,21 @@ import { LocalStrategy } from './strategies/local.strategy';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN', '7d') as any },
+
+        signOptions: {
+          expiresIn: config.get<string>('JWT_EXPIRES_IN', '7d') as any,
+        },
       }),
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy, LocalAuthGuard, JwtAuthGuard],
+  providers: [
+    AuthService,
+    LocalStrategy,
+    JwtStrategy,
+    LocalAuthGuard,
+    JwtAuthGuard,
+  ],
   exports: [JwtAuthGuard],
 })
 export class AuthModule {}

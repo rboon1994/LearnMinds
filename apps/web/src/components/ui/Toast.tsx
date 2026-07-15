@@ -15,6 +15,7 @@ type ToastContextValue = {
   saveFailed: () => void;
   deleteFailed: () => void;
   accountInactive: () => void;
+  duplicateName: () => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -40,6 +41,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     saveFailed: () => push('error', 'Failed to Save'),
     deleteFailed: () => push('error', 'Failed to Delete'),
     accountInactive: () => push('error', 'Account is not active'),
+    duplicateName: () => push('error', 'A series with this name already exists'),
   };
 
   return (

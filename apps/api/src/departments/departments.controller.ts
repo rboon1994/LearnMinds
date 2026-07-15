@@ -40,7 +40,11 @@ export class DepartmentsController {
 
   @Patch(':id')
   @RequireFeature('department-management')
-  update(@Param('id') id: string, @Body() dto: CreateDepartmentDto, @Request() req: AuthReq) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: CreateDepartmentDto,
+    @Request() req: AuthReq,
+  ) {
     return this.svc.update(id, dto, req.user.tenantId);
   }
 
@@ -52,13 +56,21 @@ export class DepartmentsController {
 
   @Put(':id/nav-items')
   @RequireFeature('department-management')
-  assignNavItems(@Param('id') id: string, @Body() dto: AssignNavItemsDto, @Request() req: AuthReq) {
+  assignNavItems(
+    @Param('id') id: string,
+    @Body() dto: AssignNavItemsDto,
+    @Request() req: AuthReq,
+  ) {
     return this.svc.assignNavItems(id, dto.navItemIds, req.user.tenantId);
   }
 
   @Put(':id/users/:userId')
   @RequireFeature('department-management')
-  assignUser(@Param('id') id: string, @Param('userId') userId: string, @Request() req: AuthReq) {
+  assignUser(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @Request() req: AuthReq,
+  ) {
     return this.svc.assignUser(userId, id, req.user.tenantId);
   }
 }

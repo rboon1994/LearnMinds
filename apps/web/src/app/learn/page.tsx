@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { Navigation } from '@/components/layout/Navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -13,11 +14,11 @@ import { formatDateRange } from '@/lib/duration';
 type Course = {
   id: string;
   title: string;
-  description: string | null;
   thumbnail: string | null;
   startDate: string | null;
   endDate: string | null;
   status: 'DRAFT' | 'PUBLISHED';
+  speakers: { id: string; name: string }[];
   _count: { lessons: number };
 };
 
@@ -34,6 +35,7 @@ function initials(name: string) {
 
 export default function LearnPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [speakerFilter, setSpeakerFilter] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
   const { user: authUser } = useAuth();
@@ -51,14 +53,31 @@ export default function LearnPage() {
       .catch(() => {});
   }, []);
 
+  const speakerOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const c of courses) {
+      for (const speaker of c.speakers) byId.set(speaker.id, speaker.name);
+    }
+    return Array.from(byId, ([value, label]) => ({ value, label })).sort((a, b) =>
+      a.label.localeCompare(b.label),
+    );
+  }, [courses]);
+
   const filteredCourses = useMemo(() => {
     let result = courses;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter((c) => c.title.toLowerCase().includes(q));
     }
-    return result;
-  }, [courses, searchQuery]);
+    if (speakerFilter) {
+      result = result.filter((c) => c.speakers.some((s) => s.id === speakerFilter));
+    }
+    return [...result].sort((a, b) => {
+      if (!a.startDate) return 1;
+      if (!b.startDate) return -1;
+      return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
+    });
+  }, [courses, searchQuery, speakerFilter]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -90,6 +109,17 @@ export default function LearnPage() {
                     value={searchQuery}
                     onValueChange={setSearchQuery}
                     placeholder="Search…"
+                  />
+                </div>
+
+                {/* Speaker filter */}
+                <div className="w-40 sm:w-56 shrink-0">
+                  <SearchableSelect
+                    id="speaker-filter"
+                    onChange={setSpeakerFilter}
+                    options={speakerOptions}
+                    placeholder="All speakers"
+                    value={speakerFilter}
                   />
                 </div>
 
@@ -139,27 +169,31 @@ export default function LearnPage() {
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={course.thumbnail} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          <div className={`w-full h-full bg-gradient-to-br ${GRADIENTS[idx % GRADIENTS.length]}`}>
+                          <div className={`w-full h-full bg-linear-to-br ${GRADIENTS[idx % GRADIENTS.length]}`}>
                             <div className="absolute top-3 right-3 w-20 h-20 rounded-full bg-white/15 blur-xl pointer-events-none" />
                             <div className="absolute bottom-3 left-3 w-16 h-16 rounded-full bg-black/10 blur-lg pointer-events-none" />
-                            <div className="absolute inset-0 flex items-center justify-center text-white/15 text-7xl font-black select-none">
-                              {course.title.charAt(0)}
-                            </div>
                           </div>
                         )}
+                        <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-black/80 to-transparent px-3 pt-8 pb-2">
+                          <div className="w-[65%]">
+                            <h3 className="text-2xl font-semibold text-white line-clamp-3 leading-snug">
+                              {course.title}
+                            </h3>
+                            {course.speakers.length > 0 && (
+                              <p className="text-base font-medium text-white truncate mt-0.5">
+                                {course.speakers.map((s) => s.name).join(', ')}
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
                       {/* Content */}
-                      <div className="p-4">
-                        <h3 className="text-sm font-semibold text-slate-900 line-clamp-2 mb-1 group-hover:text-indigo-600 transition-colors leading-snug min-h-[2.5rem]">
-                          {course.title}
-                        </h3>
-                        {formatDateRange(course.startDate, course.endDate) && (
-                          <p className="text-xs text-slate-400 mb-2">
-                            {formatDateRange(course.startDate, course.endDate)}
-                          </p>
-                        )}
-                        <span className="text-xs text-slate-400">{course._count.lessons} lessons</span>
+                      <div className="flex items-center justify-between p-4">
+                        <span className="text-sm">
+                          {formatDateRange(course.startDate, course.endDate) ?? ''}
+                        </span>
+                        <span className="text-sm">{course._count.lessons} lessons</span>
                       </div>
                     </motion.article>
                   ))}

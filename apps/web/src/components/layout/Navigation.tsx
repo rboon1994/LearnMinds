@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -29,7 +30,6 @@ export function Navigation({
   showUpgradeCard = true,
 }: NavigationProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const router = useRouter();
   const pathname = usePathname();
   const { user: authUser } = useAuth();
 
@@ -95,12 +95,12 @@ export function Navigation({
           )}
           <nav className="space-y-1 mb-6">
             {items.map((item) => (
-              <button
+              <Link
                 key={item.id}
-                onClick={() => { if (item.href) router.push(item.href); }}
+                href={item.href}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative group ${
                   pathname === item.href
-                    ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700'
+                    ? 'bg-linear-to-r from-indigo-50 to-purple-50 text-indigo-700'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
@@ -117,14 +117,14 @@ export function Navigation({
                   }`}
                 />
                 {!collapsed && <span className="flex-1 text-left whitespace-nowrap">{item.name}</span>}
-              </button>
+              </Link>
             ))}
           </nav>
         </div>
 
-        <div className="border-t border-slate-200 p-3 flex-shrink-0">
+        <div className="border-t border-slate-200 p-3 shrink-0">
           {showUpgradeCard && !collapsed && (
-            <div className="mx-2 mb-4 p-4 rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white relative overflow-hidden">
+            <div className="mx-2 mb-4 p-4 rounded-2xl bg-linear-to-br from-indigo-600 via-purple-600 to-pink-600 text-white relative overflow-hidden">
               <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-white/10 blur-xl" />
               <div className="absolute -bottom-4 -left-4 w-16 h-16 rounded-full bg-white/10 blur-xl" />
               <div className="relative">
@@ -142,7 +142,7 @@ export function Navigation({
               collapsed ? 'justify-center' : ''
             }`}
           >
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+            <div className="w-9 h-9 rounded-full bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
               {user.initials.charAt(0)}
             </div>
             {!collapsed && (

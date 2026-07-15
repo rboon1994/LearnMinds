@@ -29,6 +29,7 @@ type Course = {
   description: string | null;
   startDate: string | null;
   endDate: string | null;
+  speakers: { id: string; name: string }[];
   lessons: Lesson[];
   files: CourseFile[];
 };
@@ -130,9 +131,14 @@ export default function CourseDetailPage() {
                   // Video.js, which only plays direct video files, not third-party watch pages.
                   // Assumes the pasted link is already embed-friendly (e.g. player.vimeo.com/video/…);
                   // add per-provider URL rewriting later if editors paste plain watch-page links.
+                  // rounded-xl + overflow-hidden go on the iframe itself, not the shared ancestor
+                  // above (that div must stay overflow-visible for the Video.js touch fix) — an
+                  // iframe is a single opaque element/compositing boundary to the parent page, so
+                  // clipping it here can't cause the two-separately-composited-layers hit-testing
+                  // bug that overflow-hidden causes for Video.js's <video> + control bar pair.
                   <iframe
                     src={activeLesson.videoUrl}
-                    className="absolute inset-0 w-full h-full"
+                    className="absolute inset-0 w-full h-full rounded-xl overflow-hidden"
                     allow="autoplay; fullscreen; picture-in-picture"
                     allowFullScreen
                   />
@@ -142,6 +148,11 @@ export default function CourseDetailPage() {
                 )}
               </div>
               {activeLesson && <h2 className="text-lg font-semibold text-slate-900 mb-1">{activeLesson.title}</h2>}
+              {course.speakers.length > 0 && (
+                <p className="text-sm font-medium text-slate-700 mb-1">
+                  {course.speakers.map((s) => s.name).join(', ')}
+                </p>
+              )}
               {formatDateRange(course.startDate, course.endDate) && (
                 <p className="text-xs text-slate-400 mb-1">{formatDateRange(course.startDate, course.endDate)}</p>
               )}

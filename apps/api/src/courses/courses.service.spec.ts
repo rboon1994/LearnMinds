@@ -27,6 +27,7 @@ describe('CoursesService tenant scoping', () => {
     const prisma = {
       course: {
         findMany: jest.fn(),
+        count: jest.fn(),
         findFirstOrThrow: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
@@ -39,7 +40,7 @@ describe('CoursesService tenant scoping', () => {
 
   it('findAllForAdmin scopes findMany to the admin tenant only', () => {
     const { service, prisma } = buildService();
-    service.findAllForAdmin('tenant-a');
+    service.findAllForAdmin('tenant-a', { page: 1, pageSize: 10 });
     expect(prisma.course.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: 'tenant-a' } }),
     );
@@ -47,9 +48,9 @@ describe('CoursesService tenant scoping', () => {
 
   it('findAllForSuperAdmin does not filter by tenant', () => {
     const { service, prisma } = buildService();
-    service.findAllForSuperAdmin();
+    service.findAllForSuperAdmin({ page: 1, pageSize: 10 });
     const args = prisma.course.findMany.mock.calls[0][0];
-    expect(args.where).toBeUndefined();
+    expect(args.where).toEqual({});
   });
 
   it('findBrowsable scopes a USER to PUBLISHED courses in their tenant or global', () => {

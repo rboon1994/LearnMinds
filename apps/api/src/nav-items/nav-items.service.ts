@@ -24,12 +24,16 @@ export class NavItemsService {
 
   async delete(id: string) {
     const item = await this.prisma.navItem.findUniqueOrThrow({ where: { id } });
-    if (item.isSystem) throw new ForbiddenException('System nav items cannot be deleted');
+    if (item.isSystem)
+      throw new ForbiddenException('System nav items cannot be deleted');
     await this.depts.cleanupNavItemId(id);
     await this.prisma.navItem.delete({ where: { id } });
   }
 
   updatePackages(id: string, packages: string[]) {
-    return this.prisma.navItem.update({ where: { id }, data: { packages: packages as any } });
+    return this.prisma.navItem.update({
+      where: { id },
+      data: { packages: packages as any },
+    });
   }
 }
