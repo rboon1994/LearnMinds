@@ -22,7 +22,7 @@ type Student = {
   fullName: string;
   phoneCountryCode: string | null;
   phoneNo: string | null;
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  status: 'ACTIVE' | 'INACTIVE';
   lastSignInAt: string | null;
 };
 

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -71,6 +72,24 @@ export class AuthService {
     return { access_token: this.sign(user) };
   }
 
+  async changePassword(userId: string, newPassword: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    const isSameAsCurrent = await bcrypt.compare(newPassword, user.password);
+    if (isSameAsCurrent) {
+      throw new BadRequestException(
+        'New password must be different from the default password',
+      );
+    }
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashed, mustChangePassword: false },
+    });
+    return { success: true };
+  }
+
   async getMe(userId: string) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -82,6 +101,7 @@ export class AuthService {
         tenantId: true,
         departmentId: true,
         studentId: true,
+        mustChangePassword: true,
         tenant: { select: { id: true, name: true, package: true } },
         department: { select: { id: true, name: true } },
       },
@@ -94,7 +114,7 @@ export class AuthService {
         navItems: [
           {
             id: 'learn',
-            name: 'My Courses',
+            name: 'Courses',
             href: '/learn',
             icon: 'book',
             order: 0,

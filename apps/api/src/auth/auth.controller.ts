@@ -3,12 +3,14 @@ import {
   Controller,
   Get,
   HttpCode,
+  Patch,
   Post,
   Request,
   UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 
@@ -44,5 +46,13 @@ export class AuthController {
   @Get('me')
   me(@Request() req: { user: { userId: string } }) {
     return this.authService.getMe(req.user.userId);
+  }
+
+  @Patch('change-password')
+  changePassword(
+    @Request() req: { user: { userId: string } },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(req.user.userId, dto.newPassword);
   }
 }

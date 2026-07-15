@@ -15,46 +15,64 @@ export type BulkRegisterResult = {
   reason?: string;
 };
 
+const selectFields = {
+  id: true,
+  email: true,
+  fullName: true,
+  phoneCountryCode: true,
+  phoneNo: true,
+  mustChangePassword: true,
+  lastSignInAt: true,
+  createdAt: true,
+} as const;
+
+// The admin-facing "status" is derived from mustChangePassword, not the account status
+// enum — a Student is Inactive until they set their own password, Active from then on.
+function toStudentDto<T extends { mustChangePassword: boolean }>({
+  mustChangePassword,
+  ...row
+}: T) {
+  return {
+    ...row,
+    status: mustChangePassword ? 'INACTIVE' : ('ACTIVE' as const),
+  };
+}
+
 @Injectable()
 export class StudentsService {
   constructor(private prisma: PrismaService) {}
 
-  private static readonly selectFields = {
-    id: true,
-    email: true,
-    fullName: true,
-    phoneCountryCode: true,
-    phoneNo: true,
-    status: true,
-    lastSignInAt: true,
-    createdAt: true,
-  } as const;
-
-  findAll() {
-    return this.prisma.user.findMany({
+  async findAll() {
+    const rows = await this.prisma.user.findMany({
       where: { studentId: { not: null } },
-      select: StudentsService.selectFields,
+      select: selectFields,
       orderBy: { createdAt: 'desc' },
     });
+    return rows.map(toStudentDto);
   }
 
-  findOne(id: string) {
-    return this.prisma.user.findFirstOrThrow({
+  async findOne(id: string) {
+    const row = await this.prisma.user.findFirstOrThrow({
       where: { id, studentId: { not: null } },
-      select: StudentsService.selectFields,
+      select: selectFields,
     });
+    return toStudentDto(row);
   }
 
   async update(id: string, dto: UpdateStudentDto) {
     await this.findOne(id);
     try {
-      return await this.prisma.user.update({
+      const row = await this.prisma.user.update({
         where: { id },
         data: dto,
-        select: StudentsService.selectFields,
+        select: selectFields,
       });
+      return toStudentDto(row);
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
         throw new ConflictException('Email already registered');
       }
       throw err;
@@ -70,11 +88,12 @@ export class StudentsService {
   async resetPassword(id: string) {
     await this.findOne(id);
     const hashed = await bcrypt.hash(TEMP_PASSWORD, 10);
-    return this.prisma.user.update({
+    const row = await this.prisma.user.update({
       where: { id },
       data: { password: hashed, mustChangePassword: true },
-      select: StudentsService.selectFields,
+      select: selectFields,
     });
+    return toStudentDto(row);
   }
 
   // Sequential (not Promise.all) so a duplicate email appearing twice within the same batch is

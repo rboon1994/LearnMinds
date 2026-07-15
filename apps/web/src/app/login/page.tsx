@@ -29,7 +29,9 @@ export default function LoginPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!loading && user) router.replace(landingRoute(user.navItems));
+    if (!loading && user) {
+      router.replace(user.mustChangePassword ? '/change-password' : landingRoute(user.navItems));
+    }
   }, [user, loading, router]);
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -82,7 +84,11 @@ export default function LoginPage() {
           const me = await fetch(`${apiUrl}/auth/me`, {
             headers: { Authorization: `Bearer ${data.access_token}` },
           }).then((r) => r.json());
-          window.location.replace(landingRoute(me.navItems ?? []));
+          if (me.mustChangePassword) {
+            window.location.replace('/change-password');
+          } else {
+            window.location.replace(landingRoute(me.navItems ?? []));
+          }
         } catch {
           window.location.replace('/learn');
         }

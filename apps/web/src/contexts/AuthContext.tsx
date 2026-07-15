@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { apiUrl } from '@/lib/api';
 
 export type NavItem = {
@@ -24,6 +25,7 @@ export type AuthUser = {
   email: string;
   fullName: string;
   role: 'SUPER_ADMIN' | 'ADMIN' | 'USER' | 'STUDENT';
+  mustChangePassword: boolean;
   tenant: { id: string; name: string; package: string } | null;
   department: { id: string; name: string } | null;
   navItems: NavItem[];
@@ -42,6 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
+  const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -62,6 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
     return () => controller.abort();
   }, [tick]);
+
+  useEffect(() => {
+    if (!loading && user?.mustChangePassword && pathname !== '/change-password') {
+      router.replace('/change-password');
+    }
+  }, [user, loading, pathname, router]);
 
   return (
     <AuthContext.Provider value={{ user, loading, reload: () => setTick((t) => t + 1) }}>
