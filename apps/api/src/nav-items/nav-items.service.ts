@@ -36,4 +36,11 @@ export class NavItemsService {
       data: { packages: packages as any },
     });
   }
+
+  updateStudentVisible(id: string, isStudentVisible: boolean) {
+    return this.prisma.navItem.update({
+      where: { id },
+      data: { isStudentVisible },
+    });
+  }
 }

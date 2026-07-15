@@ -47,4 +47,12 @@ export class NavItemsController {
   ) {
     return this.svc.updatePackages(id, packages);
   }
+
+  @Patch(':id/student-visible')
+  updateStudentVisible(
+    @Param('id') id: string,
+    @Body('isStudentVisible') isStudentVisible: boolean,
+  ) {
+    return this.svc.updateStudentVisible(id, isStudentVisible);
+  }
 }

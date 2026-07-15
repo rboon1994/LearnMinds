@@ -34,6 +34,10 @@ export class UpsertNavItemDto {
   @IsOptional()
   isAllDepts?: boolean;
 
+  @IsBoolean()
+  @IsOptional()
+  isStudentVisible?: boolean;
+
   @IsArray()
   @IsEnum(TenantPackage, { each: true })
   packages: TenantPackage[];

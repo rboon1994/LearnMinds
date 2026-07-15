@@ -13,6 +13,7 @@ async function main() {
     isSystem: boolean;
     isAdminNav: boolean;
     isAllDepts: boolean;
+    isStudentVisible: boolean;
     packages: TenantPackage[];
     status: 'ACTIVE';
   }[] = [
@@ -24,6 +25,7 @@ async function main() {
       isSystem: true,
       isAdminNav: false,
       isAllDepts: true,
+      isStudentVisible: true,
       packages: ['FREE', 'PRO', 'ENTERPRISE'],
       status: 'ACTIVE',
     },
@@ -35,6 +37,7 @@ async function main() {
       isSystem: true,
       isAdminNav: true,
       isAllDepts: false,
+      isStudentVisible: false,
       packages: ['FREE', 'PRO', 'ENTERPRISE'],
       status: 'ACTIVE',
     },

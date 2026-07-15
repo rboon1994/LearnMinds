@@ -11,6 +11,7 @@ type NavItem = {
   href: string;
   icon: string;
   packages: string[];
+  isStudentVisible: boolean;
   isSystem: boolean;
   status: string;
 };
@@ -45,6 +46,17 @@ export default function NavItemsPage() {
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, packages: next } : i)));
   };
 
+  const toggleStudentVisible = async (item: NavItem) => {
+    const token = localStorage.getItem('token');
+    const next = !item.isStudentVisible;
+    await fetch(`${apiUrl}/nav-items/${item.id}/student-visible`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isStudentVisible: next }),
+    });
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, isStudentVisible: next } : i)));
+  };
+
   if (user?.role !== 'SUPER_ADMIN') return null;
 
   return (
@@ -58,6 +70,7 @@ export default function NavItemsPage() {
               {ALL_PACKAGES.map((pkg) => (
                 <th key={pkg} className="px-4 py-3 text-center">{pkg}</th>
               ))}
+              <th className="px-4 py-3 text-center">Student</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -74,6 +87,14 @@ export default function NavItemsPage() {
                     />
                   </td>
                 ))}
+                <td className="px-4 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    checked={item.isStudentVisible}
+                    onChange={() => toggleStudentVisible(item)}
+                    className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                  />
+                </td>
               </tr>
             ))}
           </tbody>

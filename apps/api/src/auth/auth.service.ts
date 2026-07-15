@@ -107,23 +107,6 @@ export class AuthService {
       },
     });
 
-    // Students have no Tenant/Department to derive nav/admin-features from — fixed shape instead.
-    if (user.role === Role.STUDENT) {
-      return {
-        ...user,
-        navItems: [
-          {
-            id: 'learn',
-            name: 'Courses',
-            href: '/learn',
-            icon: 'book',
-            order: 0,
-          },
-        ],
-        adminFeatures: [],
-      };
-    }
-
     const [navItems, adminFeatures] = await Promise.all([
       this.getNavItems(user, user.tenant),
       this.getAdminFeatures(user, user.tenant),
@@ -136,6 +119,15 @@ export class AuthService {
     user: { role: string; departmentId: string | null },
     tenant: { package: Tenant['package'] } | null,
   ) {
+    // Students have no Tenant/Department (and no package to gate on) — visibility is a
+    // dedicated flag toggled per nav item, independent of the tenant-package system below.
+    if (user.role === Role.STUDENT) {
+      return this.prisma.navItem.findMany({
+        where: { status: Status.ACTIVE, isStudentVisible: true },
+        orderBy: { order: 'asc' },
+      });
+    }
+
     const pkg = tenant?.package;
     const baseWhere = pkg
       ? { status: Status.ACTIVE, packages: { has: pkg } }
@@ -169,7 +161,7 @@ export class AuthService {
     user: { role: string },
     tenant: { package: Tenant['package'] } | null,
   ) {
-    if (user.role === Role.USER) return [];
+    if (user.role === Role.USER || user.role === Role.STUDENT) return [];
     const features = await this.prisma.adminFeature.findMany({
       where: { status: Status.ACTIVE },
       orderBy: { order: 'asc' },

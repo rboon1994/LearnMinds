@@ -99,18 +99,19 @@ model Department {
 }
 
 model NavItem {
-  id         String          @id @default(cuid())
-  name       String
-  href       String          @unique
-  icon       String
-  order      Int             @default(0)
-  isSystem   Boolean         @default(false)
-  isAdminNav Boolean         @default(false)
-  isAllDepts Boolean         @default(true)
-  packages   TenantPackage[]
-  status     Status          @default(ACTIVE)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  name             String
+  href             String          @unique
+  icon             String
+  order            Int             @default(0)
+  isSystem         Boolean         @default(false)
+  isAdminNav       Boolean         @default(false)
+  isAllDepts       Boolean         @default(true)
+  isStudentVisible Boolean         @default(false)
+  packages         TenantPackage[]
+  status           Status          @default(ACTIVE)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 }
 
 model AdminFeature {
