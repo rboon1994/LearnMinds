@@ -79,9 +79,18 @@ export class StudentsService {
     }
   }
 
+  // Deletes the User row and its Student satellite row together — Student otherwise survives
+  // as an orphan forever, since the FK runs User.studentId -> Student.id with no cascade back.
+  // Enrollment rows cascade-delete automatically (onDelete: Cascade on Enrollment.student).
   async delete(id: string) {
-    await this.findOne(id);
-    await this.prisma.user.delete({ where: { id } });
+    const user = await this.prisma.user.findFirstOrThrow({
+      where: { id, studentId: { not: null } },
+      select: { studentId: true },
+    });
+    await this.prisma.$transaction([
+      this.prisma.user.delete({ where: { id } }),
+      this.prisma.student.delete({ where: { id: user.studentId! } }),
+    ]);
   }
 
   // Back to the fixed bulk-register temp password, with mustChangePassword forcing them off it again.

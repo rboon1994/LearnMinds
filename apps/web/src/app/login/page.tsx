@@ -20,6 +20,10 @@ type LoginFormData = {
   password: string;
 };
 
+function landingPath(user: { mustChangePassword: boolean; navItems: Parameters<typeof landingRoute>[0] }) {
+  return user.mustChangePassword ? '/change-password' : landingRoute(user.navItems);
+}
+
 export default function LoginPage() {
   const { user, loading } = useAuth();
   const toast = useToast();
@@ -30,7 +34,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace(user.mustChangePassword ? '/change-password' : landingRoute(user.navItems));
+      router.replace(landingPath(user));
     }
   }, [user, loading, router]);
 
@@ -84,11 +88,7 @@ export default function LoginPage() {
           const me = await fetch(`${apiUrl}/auth/me`, {
             headers: { Authorization: `Bearer ${data.access_token}` },
           }).then((r) => r.json());
-          if (me.mustChangePassword) {
-            window.location.replace('/change-password');
-          } else {
-            window.location.replace(landingRoute(me.navItems ?? []));
-          }
+          window.location.replace(landingPath({ mustChangePassword: me.mustChangePassword, navItems: me.navItems ?? [] }));
         } catch {
           window.location.replace('/learn');
         }

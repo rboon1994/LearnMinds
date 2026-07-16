@@ -29,8 +29,11 @@ type CourseSuperAdminRow = Prisma.CourseGetPayload<{
 
 function searchFilterWhere(query: CoursesQueryDto): Prisma.CourseWhereInput {
   return {
-    ...(query.search ? { title: { contains: query.search, mode: 'insensitive' } } : {}),
+    ...(query.search
+      ? { title: { contains: query.search, mode: 'insensitive' } }
+      : {}),
     ...(query.seriesId ? { seriesId: query.seriesId } : {}),
+    ...(query.status ? { status: query.status } : {}),
   };
 }
 

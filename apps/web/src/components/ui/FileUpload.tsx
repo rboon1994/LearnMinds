@@ -4,20 +4,24 @@ import type { ChangeEvent, DragEvent, InputHTMLAttributes } from 'react';
 import { Icon } from './Icon';
 
 type FileUploadProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'type' | 'onChange'> & {
+  acceptLabel?: string;
   error?: string;
   helperText?: string;
   id: string;
   label?: string;
+  maxSizeBytes?: number;
   onFilesSelected?: (files: File[]) => void;
 };
 
 export function FileUpload({
   accept,
+  acceptLabel,
   className = '',
   error,
   helperText,
   id,
   label,
+  maxSizeBytes,
   multiple,
   onFilesSelected,
   ...props
@@ -25,6 +29,7 @@ export function FileUpload({
   const inputRef = useRef<HTMLInputElement>(null);
   const [fileNames, setFileNames] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [rejectionError, setRejectionError] = useState('');
 
   const matchesAccept = (file: File) => {
     if (!accept) return true;
@@ -38,8 +43,19 @@ export function FileUpload({
 
   const applyFiles = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList).filter(matchesAccept);
+    const all = Array.from(fileList);
+    const wrongType = all.filter((file) => !matchesAccept(file));
+    const tooLarge = all.filter((file) => matchesAccept(file) && maxSizeBytes != null && file.size > maxSizeBytes);
+    const files = all.filter((file) => matchesAccept(file) && (maxSizeBytes == null || file.size <= maxSizeBytes));
     const selected = multiple ? files : files.slice(0, 1);
+
+    if (wrongType.length > 0) {
+      setRejectionError('File type not supported.');
+    } else if (tooLarge.length > 0) {
+      setRejectionError(`File exceeds the ${formatMaxSize(maxSizeBytes)} size limit.`);
+    } else {
+      setRejectionError('');
+    }
     if (selected.length === 0) return;
     setFileNames(selected.map((file) => file.name));
     onFilesSelected?.(selected);
@@ -56,6 +72,8 @@ export function FileUpload({
     applyFiles(event.dataTransfer.files);
   };
 
+  const displayError = error || rejectionError;
+
   return (
     <div>
       {label && (
@@ -64,9 +82,9 @@ export function FileUpload({
         </label>
       )}
       <div
-        aria-describedby={error || helperText ? `${id}-description` : undefined}
+        aria-describedby={displayError || helperText ? `${id}-description` : undefined}
         className={`cursor-pointer rounded-xl border border-dashed bg-white p-5 text-center transition-all ${
-          error
+          displayError
             ? 'border-red-300'
             : isDragging
               ? 'border-teal-400 bg-teal-50/40'
@@ -87,6 +105,7 @@ export function FileUpload({
           ) : (
             <>
               Drop file or <span className="text-teal-600 underline">browse</span>
+              {acceptLabel && <div className="mt-1 text-xs text-slate-400">{acceptLabel}</div>}
             </>
           )}
         </div>
@@ -101,11 +120,16 @@ export function FileUpload({
           {...props}
         />
       </div>
-      {(error || helperText) && (
-        <p className={`mt-1.5 text-sm ${error ? 'text-red-600' : 'text-slate-500'}`} id={`${id}-description`}>
-          {error ?? helperText}
+      {(displayError || helperText) && (
+        <p className={`mt-1.5 text-sm ${displayError ? 'text-red-600' : 'text-slate-500'}`} id={`${id}-description`}>
+          {displayError || helperText}
         </p>
       )}
     </div>
   );
+}
+
+function formatMaxSize(bytes: number | undefined) {
+  if (!bytes) return 'size';
+  return `${Math.round(bytes / (1024 * 1024))}MB`;
 }

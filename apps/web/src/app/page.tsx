@@ -81,12 +81,12 @@ export default function Home() {
             </div>
 
             <h1 className="text-5xl md:text-7xl font-bold leading-tight mb-6">
-              Your Company's{" "}
+              Your Company&apos;s{" "}
               <span className="gradient-text">Digital Brain</span>
             </h1>
 
             <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-              Transform your team's knowledge into actionable intelligence. Build custom AI agents
+              Transform your team&apos;s knowledge into actionable intelligence. Build custom AI agents
               that understand your business and empower every team member with instant answers.
             </p>
 
@@ -157,7 +157,7 @@ export default function Home() {
                         <div className="flex-1">
                           <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg p-3 border border-green-100">
                             <p className="text-sm text-gray-700 mb-2">
-                              Based on our customer service guidelines, here's how to handle shipping delays:
+                              Based on our customer service guidelines, here&apos;s how to handle shipping delays:
                             </p>
                             <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
                               <li>Acknowledge the delay and apologize sincerely</li>
@@ -533,7 +533,7 @@ export default function Home() {
 
             <div className="relative">
               <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-                Ready to Transform Your Team's Knowledge?
+                Ready to Transform Your Team&apos;s Knowledge?
               </h2>
               <p className="text-xl text-white/90 mb-10 max-w-2xl mx-auto">
                 Join hundreds of companies using LearnMinds to build smarter, faster, and more collaborative teams.

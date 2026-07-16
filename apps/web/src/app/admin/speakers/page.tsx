@@ -21,6 +21,12 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}` };
 }
 
+function validateSpeakerForm(prefix: 'create' | 'edit', name: string, title: string) {
+  if (!name.trim()) return { error: "Please enter the speaker's name", field: `${prefix}Name` };
+  if (!title.trim()) return { error: 'Please enter a title', field: `${prefix}Title` };
+  return null;
+}
+
 type Speaker = {
   id: string;
   name: string;
@@ -59,11 +65,10 @@ export default function AdminSpeakersPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const fetchSpeakers = () => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+    if (!localStorage.getItem('token')) return;
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (debouncedSearch) params.set('search', debouncedSearch);
-    fetch(`${apiUrl}/speakers?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${apiUrl}/speakers?${params.toString()}`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((res: { data: Speaker[]; total: number }) => {
         setSpeakers(res.data);
@@ -125,16 +130,17 @@ export default function AdminSpeakersPage() {
 
   const createSpeaker = async (e: { preventDefault(): void }) => {
     e.preventDefault();
-    if (!createName.trim() || !createTitle.trim()) {
-      setCreateError('Name and title are required');
+    const validation = validateSpeakerForm('create', createName, createTitle);
+    if (validation) {
+      setCreateError(validation.error);
+      setTimeout(() => document.getElementById(validation.field)?.focus(), 0);
       return;
     }
     setIsCreating(true);
     setCreateError('');
-    const token = localStorage.getItem('token');
     const res = await fetch(`${apiUrl}/speakers`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: createName,
         title: createTitle,
@@ -169,8 +175,10 @@ export default function AdminSpeakersPage() {
   const saveSpeaker = async (e: { preventDefault(): void }) => {
     e.preventDefault();
     if (!editingSpeaker) return;
-    if (!editName.trim() || !editTitle.trim()) {
-      setEditError('Name and title are required');
+    const validation = validateSpeakerForm('edit', editName, editTitle);
+    if (validation) {
+      setEditError(validation.error);
+      setTimeout(() => document.getElementById(validation.field)?.focus(), 0);
       return;
     }
     setIsSaving(true);

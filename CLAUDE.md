@@ -74,6 +74,8 @@ This section is the result of a full audit (2026-07-03) — don't redo this anal
 | `prisma-client-api` | Prisma Client query design/optimization — installed from `prisma/skills` |
 | `nextjs` (vercel-plugin) | Next.js App Router patterns — installed from `vercel-labs/vercel-plugin` |
 | `commit` / `commit-push-pr` | End of each logical unit of work |
+| `grill-me` | Before finalizing a design/plan with open branches (e.g. workflow state machine shape, tenantId injection approach) — interrogates one question at a time until resolved, installed from `mattpocock/skills` |
+| `caveman` (+ `cavecrew`, `caveman-commit`, `caveman-review`, `caveman-compress`, `caveman-stats`, `caveman-help`) | Not auto-active — invoke `/caveman lite` for terse responses (pairs with ponytail per its own docs). `caveman-compress` overwrites the target file (keeps a `.original.md` backup) — verify before relying on it. Installed from `JuliusBrussee/caveman` |
 
 ### Disabled Plugins (scope: user — affects all projects, not just this one)
 

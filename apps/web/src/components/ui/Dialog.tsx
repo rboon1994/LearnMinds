@@ -8,16 +8,24 @@ type DialogProps = {
   children: ReactNode;
   isOpen: boolean;
   onClose: () => void;
+  size?: 'md' | 'xl';
   title?: string;
 };
 
-export function Dialog({ children, isOpen, onClose, title }: DialogProps) {
+const DIALOG_SIZE_CLASSES: Record<NonNullable<DialogProps['size']>, string> = {
+  md: 'max-w-md',
+  xl: 'max-w-3xl',
+};
+
+export function Dialog({ children, isOpen, onClose, size = 'md', title }: DialogProps) {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-      <div className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+      <div
+        className={`relative flex max-h-[90vh] w-full ${DIALOG_SIZE_CLASSES[size]} flex-col rounded-xl border border-slate-200 bg-white p-6 shadow-xl`}
+      >
         <div className="mb-4 flex shrink-0 items-center justify-between">
           {title && <h3 className="text-lg font-semibold text-slate-900">{title}</h3>}
           <button

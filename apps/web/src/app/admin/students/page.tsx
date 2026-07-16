@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Papa from 'papaparse';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { AdminTable } from '@/components/ui/AdminTable';
 import type { AdminTableColumn } from '@/components/ui/AdminTable';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDeleteDialog, ConfirmDialog, Dialog } from '@/components/ui/Dialog';
+import { FileUpload } from '@/components/ui/FileUpload';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { PhoneField } from '@/components/ui/PhoneField';
@@ -26,17 +28,121 @@ type Student = {
   lastSignInAt: string | null;
 };
 
-type StudentRow = { fullName: string; email: string; phoneNo: string };
+type BulkStudentInput = {
+  fullName: string;
+  email: string;
+  phoneCountryCode?: string;
+  phoneNo?: string;
+  rowNumber: number;
+};
 
 type BulkResult = { email: string; status: 'created' | 'skipped'; reason?: string };
+
+type RowStatus = 'error' | 'duplicate' | 'warning' | 'ok';
+
+type PreviewRow = BulkStudentInput & { status: RowStatus; reason?: string };
+
+const STATUS_LABELS: Record<Exclude<RowStatus, 'ok'>, string> = {
+  error: 'Error',
+  duplicate: 'Duplicate',
+  warning: 'Warning',
+};
+
+const STATUS_BADGE_CLASSES: Record<Exclude<RowStatus, 'ok'>, string> = {
+  error: 'bg-red-100 text-red-700',
+  duplicate: 'bg-blue-100 text-blue-700',
+  warning: 'bg-amber-100 text-amber-700',
+};
+
+const STATUS_SORT_ORDER: Record<Exclude<RowStatus, 'ok'>, number> = {
+  error: 0,
+  duplicate: 1,
+  warning: 2,
+};
+
+function phoneKey(row: { phoneCountryCode?: string | null; phoneNo?: string | null }) {
+  return `${row.phoneCountryCode ?? ''}${row.phoneNo ?? ''}`;
+}
+
+// Strips spaces/dashes (e.g. "016-2809580", "016 2809580") and a redundant leading country code
+// (e.g. countryCode "60" + phoneNo "60162809580") from a raw Phone No cell. Doesn't strip a local
+// trunk "0" (e.g. "0162809580") — left as-is per explicit decision.
+function normalizePhoneNo(countryCode: string, rawPhoneNo: string) {
+  const digitsOnly = rawPhoneNo.replace(/[\s-]/g, '');
+  if (countryCode && digitsOnly.startsWith(countryCode)) {
+    return digitsOnly.slice(countryCode.length);
+  }
+  return digitsOnly;
+}
+
+// Classifies each parsed row against the already-loaded student list and against earlier rows in
+// the same file. Error/Duplicate block the row from being uploaded; Warning is informational only.
+function classifyBulkRows(rows: BulkStudentInput[], existingStudents: Student[]): PreviewRow[] {
+  const dbEmails = new Set(existingStudents.map((s) => s.email.toLowerCase()));
+  const dbPhones = new Set(existingStudents.filter((s) => phoneKey(s)).map((s) => phoneKey(s)));
+  const seenEmails = new Set<string>();
+  const seenPhones = new Set<string>();
+
+  return rows.map((row) => {
+    const email = row.email.toLowerCase();
+    const phone = phoneKey(row);
+
+    const missing: string[] = [];
+    if (!row.fullName) missing.push('name');
+    if (!row.email) missing.push('email address');
+    if (!row.phoneCountryCode) missing.push('country code');
+    if (!row.phoneNo) missing.push('phone number');
+    if (missing.length > 0) {
+      return { ...row, status: 'error', reason: `${missing.join(' and ')} missing` };
+    }
+
+    const emailInDb = dbEmails.has(email);
+    const emailInFile = seenEmails.has(email);
+    const phoneInDb = dbPhones.has(phone);
+    const phoneInFile = seenPhones.has(phone);
+    seenEmails.add(email);
+    seenPhones.add(phone);
+
+    if (emailInDb || emailInFile || phoneInDb || phoneInFile) {
+      const reasons: string[] = [];
+      if (emailInDb) reasons.push('email address already exists in DB');
+      else if (emailInFile) reasons.push('duplicate email address in file');
+      if (phoneInDb) reasons.push('phone number already exists in DB');
+      else if (phoneInFile) reasons.push('duplicate phone number in file');
+      return { ...row, status: 'duplicate', reason: reasons.join('; ') };
+    }
+
+    if (!email.endsWith('.com')) {
+      return { ...row, status: 'warning', reason: 'email address does not end with .com' };
+    }
+
+    return { ...row, status: 'ok' };
+  });
+}
 
 function authHeaders() {
   const token = localStorage.getItem('token');
   return { Authorization: `Bearer ${token}` };
 }
 
-function emptyRow(): StudentRow {
-  return { fullName: '', email: '', phoneNo: '' };
+function validateStudentForm(prefix: 'create' | 'edit', fullName: string, email: string, phoneNo: string) {
+  if (!fullName.trim()) return { error: "Please enter the student's full name", field: `${prefix}FullName` };
+  if (!email.trim()) return { error: 'Please enter an email address', field: `${prefix}Email` };
+  if (!phoneNo) return { error: 'Please enter a valid phone number', field: `${prefix}Phone` };
+  return null;
+}
+
+const BULK_TEMPLATE_CSV = 'Full Name,Email,Phone Country Code,Phone No\nJane Tan,jane@example.com,60,123456789\n';
+
+function downloadBulkTemplate() {
+  // BOM prefix + explicit charset so Excel on Windows/Mac reliably detects UTF-8 instead of guessing.
+  const blob = new Blob(['﻿' + BULK_TEMPLATE_CSV], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'students-template.csv';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function AdminStudentsPage() {
@@ -48,8 +154,9 @@ export default function AdminStudentsPage() {
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [isBulkOpen, setIsBulkOpen] = useState(false);
-  const [rows, setRows] = useState<StudentRow[]>([emptyRow()]);
-  const [results, setResults] = useState<BulkResult[] | null>(null);
+  const [bulkError, setBulkError] = useState('');
+  const [previewRows, setPreviewRows] = useState<PreviewRow[] | null>(null);
+  const [bulkUploaded, setBulkUploaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -105,11 +212,20 @@ export default function AdminStudentsPage() {
     [filteredStudents, page],
   );
 
+  const uploadableCount =
+    previewRows?.filter((row) => row.status !== 'error' && row.status !== 'duplicate').length ?? 0;
+
+  const flaggedRows: (PreviewRow & { status: Exclude<RowStatus, 'ok'> })[] = (
+    previewRows?.filter(
+      (row): row is PreviewRow & { status: Exclude<RowStatus, 'ok'> } => row.status !== 'ok',
+    ) ?? []
+  ).sort((a, b) => STATUS_SORT_ORDER[a.status] - STATUS_SORT_ORDER[b.status]);
+
   const columns: AdminTableColumn<Student>[] = [
-    { header: 'Full Name', className: 'font-medium text-slate-900', render: (student) => student.fullName },
-    { header: 'Email', render: (student) => student.email },
+    { header: 'Full Name', render: (student) => student.fullName },
+    { header: 'Email Address', render: (student) => student.email },
     {
-      header: 'Phone',
+      header: 'Phone Number',
       render: (student) =>
         student.phoneCountryCode || student.phoneNo
           ? `${student.phoneCountryCode ?? ''}${student.phoneNo ?? ''}`.trim()
@@ -133,8 +249,14 @@ export default function AdminStudentsPage() {
 
   const closeBulkDialog = () => {
     setIsBulkOpen(false);
-    setRows([emptyRow()]);
-    setResults(null);
+    setBulkError('');
+    setPreviewRows(null);
+    setBulkUploaded(false);
+  };
+
+  const backToBulkUpload = () => {
+    setPreviewRows(null);
+    setBulkUploaded(false);
   };
 
   const openCreateDialog = () => setIsCreateOpen(true);
@@ -150,13 +272,15 @@ export default function AdminStudentsPage() {
 
   const createStudent = async (e: { preventDefault(): void }) => {
     e.preventDefault();
-    if (!createFullName.trim() || !createEmail.trim()) {
-      setCreateError('Full name and email are required');
+    const { phoneCountryCode, phoneNo } = parsePhone(createPhone, createDialCode);
+    const validation = validateStudentForm('create', createFullName, createEmail, phoneNo);
+    if (validation) {
+      setCreateError(validation.error);
+      setTimeout(() => document.getElementById(validation.field)?.focus(), 0);
       return;
     }
     setIsCreating(true);
     setCreateError('');
-    const { phoneCountryCode, phoneNo } = parsePhone(createPhone, createDialCode);
     const res = await fetch(`${apiUrl}/students/bulk`, {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -165,8 +289,8 @@ export default function AdminStudentsPage() {
           {
             fullName: createFullName,
             email: createEmail,
-            phoneCountryCode: phoneCountryCode || undefined,
-            phoneNo: phoneNo || undefined,
+            phoneCountryCode,
+            phoneNo,
           },
         ],
       }),
@@ -178,7 +302,7 @@ export default function AdminStudentsPage() {
     }
     const [result]: BulkResult[] = await res.json();
     if (result.status === 'skipped') {
-      setCreateError(result.reason ?? 'Email already registered');
+      setCreateError(result.reason ?? 'Email address already registered');
       return;
     }
     toast.saved();
@@ -204,26 +328,28 @@ export default function AdminStudentsPage() {
   const saveStudent = async (e: { preventDefault(): void }) => {
     e.preventDefault();
     if (!editingStudent) return;
-    if (!editFullName.trim() || !editEmail.trim()) {
-      setEditError('Full name and email are required');
+    const { phoneCountryCode, phoneNo } = parsePhone(editPhone, editDialCode);
+    const validation = validateStudentForm('edit', editFullName, editEmail, phoneNo);
+    if (validation) {
+      setEditError(validation.error);
+      setTimeout(() => document.getElementById(validation.field)?.focus(), 0);
       return;
     }
     setIsSaving(true);
     setEditError('');
-    const { phoneCountryCode, phoneNo } = parsePhone(editPhone, editDialCode);
     const res = await fetch(`${apiUrl}/students/${editingStudent.id}`, {
       method: 'PATCH',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         fullName: editFullName,
         email: editEmail,
-        phoneCountryCode: phoneCountryCode || undefined,
-        phoneNo: phoneNo || undefined,
+        phoneCountryCode,
+        phoneNo,
       }),
     });
     setIsSaving(false);
     if (!res.ok) {
-      if (res.status === 409) setEditError('Email already registered');
+      if (res.status === 409) setEditError('Email address already registered');
       else toast.saveFailed();
       return;
     }
@@ -260,19 +386,51 @@ export default function AdminStudentsPage() {
     load();
   };
 
-  const updateRow = (index: number, field: keyof StudentRow, value: string) => {
-    setRows((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  const parseBulkFile = (file: File) => {
+    setBulkError('');
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, ''),
+      complete: (parsed) => {
+        const rows: BulkStudentInput[] = parsed.data.map((row, index) => {
+          const entry: BulkStudentInput = {
+            fullName: (row.fullname ?? '').trim(),
+            email: (row.email ?? '').trim(),
+            rowNumber: index + 2, // +2: header occupies row 1, so the first data row is row 2
+          };
+          const phoneCountryCode = (row.phonecountrycode ?? '').trim();
+          const phoneNo = normalizePhoneNo(phoneCountryCode, (row.phoneno ?? '').trim());
+          if (phoneCountryCode) entry.phoneCountryCode = phoneCountryCode;
+          if (phoneNo) entry.phoneNo = phoneNo;
+          return entry;
+        });
+        if (rows.length === 0) {
+          setBulkError('No rows found in file');
+          return;
+        }
+        setPreviewRows(classifyBulkRows(rows, students));
+      },
+      error: () => setBulkError('Failed to read file'),
+    });
   };
 
-  const submitBulkRegister = async (e: { preventDefault(): void }) => {
-    e.preventDefault();
-    const validRows = rows.filter((row) => row.fullName.trim() && row.email.trim());
-    if (validRows.length === 0) return;
+  const confirmBulkUpload = async () => {
+    if (!previewRows) return;
+    const uploadable = previewRows.filter((row) => row.status !== 'error' && row.status !== 'duplicate');
+    if (uploadable.length === 0) return;
     setSubmitting(true);
     const res = await fetch(`${apiUrl}/students/bulk`, {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ students: validRows }),
+      body: JSON.stringify({
+        students: uploadable.map(({ fullName, email, phoneCountryCode, phoneNo }) => ({
+          fullName,
+          email,
+          phoneCountryCode,
+          phoneNo,
+        })),
+      }),
     });
     setSubmitting(false);
     if (!res.ok) {
@@ -280,7 +438,17 @@ export default function AdminStudentsPage() {
       return;
     }
     const data: BulkResult[] = await res.json();
-    setResults(data);
+    const outcomeByEmail = new Map(data.map((result) => [result.email, result]));
+    setPreviewRows((prev) =>
+      (prev ?? []).map((row) => {
+        const outcome = outcomeByEmail.get(row.email);
+        if (outcome?.status === 'skipped') {
+          return { ...row, status: 'duplicate', reason: outcome.reason ?? 'Already registered' };
+        }
+        return row;
+      }),
+    );
+    setBulkUploaded(true);
     toast.saved();
     load();
   };
@@ -292,7 +460,7 @@ export default function AdminStudentsPage() {
       actions={
         <>
           <Button
-            leftIcon={<Icon name="plus" className="mr-1.5 h-4 w-4" />}
+            leftIcon={<Icon name="upload" className="mr-1.5 h-4 w-4" />}
             onClick={() => setIsBulkOpen(true)}
             variant="secondary"
           >
@@ -319,91 +487,135 @@ export default function AdminStudentsPage() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Search by name, email, or phone..."
+              placeholder="Search by name, email address, or phone number..."
               value={search}
             />
           </div>
         }
       />
 
-      <Dialog isOpen={isBulkOpen} onClose={closeBulkDialog} title="Bulk Register Students">
-        {results ? (
+      <Dialog isOpen={isBulkOpen} onClose={closeBulkDialog} title="Bulk Register Students" size="xl">
+        {previewRows ? (
           <div className="space-y-4">
-            <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
-              {results.map((result) => (
-                <div key={result.email} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                  <span className="text-slate-900">{result.email}</span>
-                  <span
-                    className={result.status === 'created' ? 'text-green-600' : 'text-slate-400'}
-                  >
-                    {result.status === 'created' ? 'Created' : (result.reason ?? 'Skipped')}
-                  </span>
+            {bulkUploaded ? (
+              <p className="text-sm text-slate-600">
+                {previewRows.filter((row) => row.status === 'ok' || row.status === 'warning').length} created,{' '}
+                {previewRows.filter((row) => row.status === 'error' || row.status === 'duplicate').length} failed
+              </p>
+            ) : (
+              <div>
+                <p className="mb-2 font-semibold text-slate-900">Preview ({previewRows.length} rows)</p>
+                <div className="flex gap-2">
+                  {(['error', 'duplicate', 'warning'] as const).map((status) => {
+                    const count = previewRows.filter((row) => row.status === status).length;
+                    if (count === 0) return null;
+                    return (
+                      <span
+                        key={status}
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[status]}`}
+                      >
+                        {count} {STATUS_LABELS[status]}
+                        {count > 1 ? 's' : ''}
+                      </span>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-            <Button className="w-full" onClick={closeBulkDialog}>
-              Done
-            </Button>
+              </div>
+            )}
+            {flaggedRows.length === 0 ? (
+              <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-6 text-center text-sm text-green-700">
+                {bulkUploaded ? 'All rows were processed successfully.' : 'All rows are valid and ready to be processed.'}
+              </div>
+            ) : (
+              <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Row</th>
+                      <th className="px-4 py-2 text-left">Status</th>
+                      <th className="px-4 py-2 text-left">Name</th>
+                      <th className="px-4 py-2 text-left">Email Address</th>
+                      <th className="px-4 py-2 text-left">Phone Number</th>
+                      <th className="px-4 py-2 text-left">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {flaggedRows.map((row) => (
+                      <tr key={row.rowNumber}>
+                        <td className="px-4 py-2 text-slate-500">{row.rowNumber}</td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[row.status]}`}
+                          >
+                            {STATUS_LABELS[row.status]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-slate-900">{row.fullName || '—'}</td>
+                        <td className="px-4 py-2 text-slate-500">{row.email || '—'}</td>
+                        <td className="px-4 py-2 text-slate-500">
+                          {row.phoneCountryCode || row.phoneNo ? phoneKey(row) : '—'}
+                        </td>
+                        <td className="px-4 py-2 text-slate-500">{row.reason ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {bulkUploaded ? (
+              <Button className="w-full" onClick={closeBulkDialog}>
+                Done
+              </Button>
+            ) : (
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="secondary" onClick={backToBulkUpload}>
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  onClick={confirmBulkUpload}
+                  disabled={uploadableCount === 0}
+                  isLoading={submitting}
+                  loadingLabel="Uploading..."
+                >
+                  Upload {uploadableCount} Row{uploadableCount === 1 ? '' : 's'}
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
-          <form className="space-y-4" onSubmit={submitBulkRegister}>
-            <div className="space-y-3">
-              {rows.map((row, index) => (
-                <div key={index} className="flex items-end gap-2">
-                  <div className="flex-1 min-w-0">
-                    <Input
-                      id={`fullName-${index}`}
-                      label={index === 0 ? 'Full Name' : undefined}
-                      value={row.fullName}
-                      onChange={(e) => updateRow(index, 'fullName', e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <Input
-                      id={`email-${index}`}
-                      label={index === 0 ? 'Email' : undefined}
-                      type="email"
-                      value={row.email}
-                      onChange={(e) => updateRow(index, 'email', e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <Input
-                      id={`phone-${index}`}
-                      label={index === 0 ? 'Phone' : undefined}
-                      value={row.phoneNo}
-                      onChange={(e) => updateRow(index, 'phoneNo', e.target.value)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="mb-2.5 shrink-0 text-slate-400 hover:text-red-600"
-                    onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
-                  >
-                    <Icon name="trash" className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
+          <div className="space-y-4">
             <Button
               type="button"
               variant="secondary"
-              size="sm"
-              leftIcon={<Icon name="plus" className="mr-1.5 h-4 w-4" />}
-              onClick={() => setRows((prev) => [...prev, emptyRow()])}
+              onClick={downloadBulkTemplate}
+              leftIcon={<Icon name="download" className="h-4 w-4 mr-1.5" />}
             >
-              Add row
+              Download Template
             </Button>
-            <Button type="submit" className="w-full" isLoading={submitting} loadingLabel="Registering...">
-              Register
-            </Button>
-          </form>
+            <FileUpload
+              id="bulkFile"
+              label="Upload completed template"
+              accept=".csv"
+              acceptLabel="CSV file, max 15MB"
+              maxSizeBytes={15 * 1024 * 1024}
+              onFilesSelected={(files) => {
+                if (files[0]) parseBulkFile(files[0]);
+              }}
+            />
+            {bulkError && (
+              <Alert type="error" icon={<Icon name="error" className="h-4 w-4" />}>
+                {bulkError}
+              </Alert>
+            )}
+          </div>
         )}
       </Dialog>
 
       <Dialog isOpen={isCreateOpen} onClose={closeCreateDialog} title="New Student">
         <form className="space-y-5" onSubmit={createStudent} noValidate>
           <Input
+            autoFocus
             id="createFullName"
             label="Full Name"
             onChange={(e) => setCreateFullName(e.target.value)}
@@ -412,7 +624,7 @@ export default function AdminStudentsPage() {
           />
           <Input
             id="createEmail"
-            label="Email"
+            label="Email Address"
             onChange={(e) => setCreateEmail(e.target.value)}
             required
             type="email"
@@ -420,7 +632,8 @@ export default function AdminStudentsPage() {
           />
           <PhoneField
             id="createPhone"
-            label="Phone"
+            label="Phone Number"
+            required
             variant="default"
             onChange={(phone, dialCode) => {
               setCreatePhone(phone);
@@ -442,6 +655,7 @@ export default function AdminStudentsPage() {
       <Dialog isOpen={editingStudent !== null} onClose={closeEditDialog} title="Edit Student">
         <form className="space-y-5" onSubmit={saveStudent} noValidate>
           <Input
+            autoFocus
             id="editFullName"
             label="Full Name"
             onChange={(e) => setEditFullName(e.target.value)}
@@ -450,7 +664,7 @@ export default function AdminStudentsPage() {
           />
           <Input
             id="editEmail"
-            label="Email"
+            label="Email Address"
             onChange={(e) => setEditEmail(e.target.value)}
             required
             type="email"
@@ -458,7 +672,8 @@ export default function AdminStudentsPage() {
           />
           <PhoneField
             id="editPhone"
-            label="Phone"
+            label="Phone Number"
+            required
             variant="default"
             onChange={(phone, dialCode) => {
               setEditPhone(phone);

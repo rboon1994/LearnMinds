@@ -68,6 +68,20 @@ async function autofillDurationFromVimeo(url: string, setDuration: (value: strin
   if (seconds != null) setDuration(formatDuration(seconds) ?? '');
 }
 
+// Resolves the final duration text (auto-filling from Vimeo first when requested), then parses it.
+async function resolveDurationSeconds(shouldAutofillFromVimeo: boolean, videoUrl: string, durationInput: string) {
+  let resolved = durationInput;
+  if (shouldAutofillFromVimeo) {
+    const seconds = await fetchVimeoDuration(videoUrl);
+    if (seconds != null) resolved = formatDuration(seconds) ?? resolved;
+  }
+  const durationSeconds = resolved.trim() ? parseDuration(resolved) : null;
+  if (resolved.trim() && durationSeconds == null) {
+    return { durationSeconds: null, error: 'Use mm:ss or h:mm:ss, e.g. 24:38' };
+  }
+  return { durationSeconds, error: null };
+}
+
 export default function EditCoursePage() {
   const { user } = useAuth();
   const toast = useToast();
@@ -137,10 +151,10 @@ export default function EditCoursePage() {
           setSeriesOptions(data.map((s) => ({ value: s.id, label: s.name }))),
         )
         .catch(() => {});
-      fetch(`${apiUrl}/speakers`, { headers: authHeaders() })
+      fetch(`${apiUrl}/speakers?pageSize=1000`, { headers: authHeaders() })
         .then((r) => r.json())
-        .then((data: { id: string; name: string }[]) =>
-          setSpeakerOptions(data.map((s) => ({ value: s.id, label: s.name }))),
+        .then((res: { data: { id: string; name: string }[] }) =>
+          setSpeakerOptions(res.data.map((s) => ({ value: s.id, label: s.name }))),
         )
         .catch(() => {});
     }
@@ -176,9 +190,9 @@ export default function EditCoursePage() {
     load();
   };
 
-  const togglePublish = async () => {
-    const status = course.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED';
-    await fetch(`${apiUrl}/courses/${courseId}`, {
+  const toggleStatus = async (url: string, currentStatus: 'DRAFT' | 'PUBLISHED') => {
+    const status = currentStatus === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED';
+    await fetch(url, {
       method: 'PATCH',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
@@ -186,15 +200,19 @@ export default function EditCoursePage() {
     load();
   };
 
-  const deleteCourse = async () => {
-    const res = await fetch(`${apiUrl}/courses/${courseId}`, { method: 'DELETE', headers: authHeaders() });
+  const deleteResource = async (url: string, onSuccess: () => void) => {
+    const res = await fetch(url, { method: 'DELETE', headers: authHeaders() });
     if (!res.ok) {
       toast.deleteFailed();
       return;
     }
     toast.deleted();
-    router.push('/admin/courses');
+    onSuccess();
   };
+
+  const togglePublish = () => toggleStatus(`${apiUrl}/courses/${courseId}`, course.status);
+
+  const deleteCourse = () => deleteResource(`${apiUrl}/courses/${courseId}`, () => router.push('/admin/courses'));
 
   const persistLessonOrder = async () => {
     await fetch(`${apiUrl}/courses/${courseId}/lessons/reorder`, {
@@ -208,14 +226,13 @@ export default function EditCoursePage() {
     e.preventDefault();
     if (!newLessonTitle.trim()) return;
     if (newLessonVideoType === 'EXTERNAL_LINK' && !newLessonVideoUrl.trim()) return;
-    let newLessonDurationInput = newLessonDuration;
-    if (newLessonVideoType === 'EXTERNAL_LINK') {
-      const seconds = await fetchVimeoDuration(newLessonVideoUrl);
-      if (seconds != null) newLessonDurationInput = formatDuration(seconds) ?? newLessonDurationInput;
-    }
-    const durationSeconds = newLessonDurationInput.trim() ? parseDuration(newLessonDurationInput) : null;
-    if (newLessonDurationInput.trim() && durationSeconds == null) {
-      setNewLessonDurationError('Use mm:ss or h:mm:ss, e.g. 24:38');
+    const { durationSeconds, error: durationError } = await resolveDurationSeconds(
+      newLessonVideoType === 'EXTERNAL_LINK',
+      newLessonVideoUrl,
+      newLessonDuration,
+    );
+    if (durationError) {
+      setNewLessonDurationError(durationError);
       return;
     }
     setNewLessonDurationError('');
@@ -252,28 +269,10 @@ export default function EditCoursePage() {
     resetNewLessonForm();
   };
 
-  const deleteLesson = async (lessonId: string) => {
-    const res = await fetch(`${apiUrl}/courses/${courseId}/lessons/${lessonId}`, {
-      method: 'DELETE',
-      headers: authHeaders(),
-    });
-    if (!res.ok) {
-      toast.deleteFailed();
-      return;
-    }
-    toast.deleted();
-    load();
-  };
+  const deleteLesson = (lessonId: string) => deleteResource(`${apiUrl}/courses/${courseId}/lessons/${lessonId}`, load);
 
-  const toggleLessonPublish = async (lesson: Lesson) => {
-    const status = lesson.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED';
-    await fetch(`${apiUrl}/courses/${courseId}/lessons/${lesson.id}`, {
-      method: 'PATCH',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    load();
-  };
+  const toggleLessonPublish = (lesson: Lesson) =>
+    toggleStatus(`${apiUrl}/courses/${courseId}/lessons/${lesson.id}`, lesson.status);
 
   const uploadFile = async (file: File) => {
     const formData = new FormData();
@@ -296,18 +295,7 @@ export default function EditCoursePage() {
     load();
   };
 
-  const deleteFile = async (fileId: string) => {
-    const res = await fetch(`${apiUrl}/courses/${courseId}/files/${fileId}`, {
-      method: 'DELETE',
-      headers: authHeaders(),
-    });
-    if (!res.ok) {
-      toast.deleteFailed();
-      return;
-    }
-    toast.deleted();
-    load();
-  };
+  const deleteFile = (fileId: string) => deleteResource(`${apiUrl}/courses/${courseId}/files/${fileId}`, load);
 
   return (
     <AdminLayout
@@ -400,18 +388,17 @@ export default function EditCoursePage() {
                 placeholder="hh:mm:ss, e.g. 1:24:38"
                 error={newLessonDurationError}
               />
-              <div style={{ display: 'none' }}>
-                <RadioGroup
-                  label="Video"
-                  name="newLessonVideoType"
-                  onChange={(value) => setNewLessonVideoType(value as 'UPLOAD' | 'EXTERNAL_LINK')}
-                  options={[
-                    { label: 'External link', value: 'EXTERNAL_LINK' },
-                    { label: 'Upload later', value: 'UPLOAD' },
-                  ]}
-                  value={newLessonVideoType}
-                />
-              </div>
+              <RadioGroup
+                className="hidden"
+                label="Video"
+                name="newLessonVideoType"
+                onChange={(value) => setNewLessonVideoType(value as 'UPLOAD' | 'EXTERNAL_LINK')}
+                options={[
+                  { label: 'External link', value: 'EXTERNAL_LINK' },
+                  { label: 'Upload later', value: 'UPLOAD' },
+                ]}
+                value={newLessonVideoType}
+              />
               {newLessonVideoType === 'EXTERNAL_LINK' && (
                 <Input
                   id="newLessonVideoUrl"
@@ -449,7 +436,11 @@ export default function EditCoursePage() {
             {course.files.length === 0 && <p className="px-4 py-6 text-center text-slate-400">No files yet.</p>}
           </div>
           <FileUpload
+            key={course.files.length}
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.md"
+            acceptLabel="PDF, Word, Excel, PowerPoint, CSV, TXT, MD · Max 15MB"
             id="courseFile"
+            maxSizeBytes={15 * 1024 * 1024}
             onFilesSelected={([file]) => file && uploadFile(file)}
           />
         </div>
@@ -569,14 +560,13 @@ function LessonEditor({
 
   const save = async (e: { preventDefault(): void }) => {
     e.preventDefault();
-    let durationInput = duration;
-    if (videoType === 'EXTERNAL_LINK' && videoUrl) {
-      const seconds = await fetchVimeoDuration(videoUrl);
-      if (seconds != null) durationInput = formatDuration(seconds) ?? durationInput;
-    }
-    const durationSeconds = durationInput.trim() ? parseDuration(durationInput) : null;
-    if (durationInput.trim() && durationSeconds == null) {
-      setDurationError('Use mm:ss or h:mm:ss, e.g. 24:38');
+    const { durationSeconds, error: durationErrorMessage } = await resolveDurationSeconds(
+      videoType === 'EXTERNAL_LINK' && Boolean(videoUrl),
+      videoUrl,
+      duration,
+    );
+    if (durationErrorMessage) {
+      setDurationError(durationErrorMessage);
       return;
     }
     setDurationError('');

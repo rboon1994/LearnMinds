@@ -42,14 +42,14 @@ const AuthContext = createContext<AuthContextValue>({ user: null, loading: true,
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => typeof window !== 'undefined' && !!localStorage.getItem('token'));
   const [tick, setTick] = useState(0);
   const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (!token) { setLoading(false); return; }
+    if (!token) return;
     const controller = new AbortController();
     fetch(`${apiUrl}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },

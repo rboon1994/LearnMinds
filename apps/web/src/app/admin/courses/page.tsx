@@ -41,10 +41,20 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}` };
 }
 
+const STATUS_OPTIONS = [
+  { value: 'DRAFT', label: 'Draft' },
+  { value: 'PUBLISHED', label: 'Published' },
+];
+
 export default function AdminCoursesPage() {
   const { user } = useAuth();
   const router = useRouter();
   const toast = useToast();
+
+  const handleDuplicateOrSaveError = (res: Response) => {
+    if (res.status === 409) toast.duplicateName();
+    else toast.saveFailed();
+  };
   const [courses, setCourses] = useState<Course[]>([]);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -59,6 +69,7 @@ export default function AdminCoursesPage() {
   const [searchTitle, setSearchTitle] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [seriesFilterId, setSeriesFilterId] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const pageSize = 10;
@@ -91,6 +102,7 @@ export default function AdminCoursesPage() {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (debouncedSearch) params.set('search', debouncedSearch);
     if (seriesFilterId) params.set('seriesId', seriesFilterId);
+    if (statusFilter) params.set('status', statusFilter);
     fetch(`${apiUrl}${path}?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((res: { data: Course[]; total: number }) => {
@@ -98,7 +110,7 @@ export default function AdminCoursesPage() {
         setTotal(res.total);
       })
       .catch(() => {});
-  }, [user, isSuperAdmin, router, page, debouncedSearch, seriesFilterId]);
+  }, [user, isSuperAdmin, router, page, debouncedSearch, seriesFilterId, statusFilter]);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -106,10 +118,10 @@ export default function AdminCoursesPage() {
       .then((r) => r.json())
       .then(setSeries)
       .catch(() => {});
-    fetch(`${apiUrl}/speakers`, { headers: authHeaders() })
+    fetch(`${apiUrl}/speakers?pageSize=1000`, { headers: authHeaders() })
       .then((r) => r.json())
-      .then((data: { id: string; name: string }[]) =>
-        setSpeakerOptions(data.map((s) => ({ value: s.id, label: s.name }))),
+      .then((res: { data: { id: string; name: string }[] }) =>
+        setSpeakerOptions(res.data.map((s) => ({ value: s.id, label: s.name }))),
       )
       .catch(() => {});
   }, [isSuperAdmin]);
@@ -120,7 +132,7 @@ export default function AdminCoursesPage() {
   );
 
   const columns: AdminTableColumn<Course>[] = [
-    { header: 'Title', className: 'font-medium text-slate-900', render: (course) => course.title },
+    { header: 'Title', render: (course) => course.title },
     { header: 'Tenant', hidden: !isSuperAdmin, render: (course) => course.tenant?.name ?? 'Global' },
     { header: 'Status', render: (course) => <StatusBadge status={course.status} /> },
     { header: 'Date', render: (course) => formatDateRange(course.startDate, course.endDate) ?? '—' },
@@ -159,8 +171,7 @@ export default function AdminCoursesPage() {
       body: JSON.stringify({ name: newSeriesName }),
     });
     if (!res.ok) {
-      if (res.status === 409) toast.duplicateName();
-      else toast.saveFailed();
+      handleDuplicateOrSaveError(res);
       return;
     }
     toast.saved();
@@ -186,6 +197,7 @@ export default function AdminCoursesPage() {
     e.preventDefault();
     if (!createTitle.trim()) {
       setCreateError('Title is required');
+      setTimeout(() => document.getElementById('createTitle')?.focus(), 0);
       return;
     }
     setIsCreating(true);
@@ -220,8 +232,7 @@ export default function AdminCoursesPage() {
       body: JSON.stringify({ name: editingSeriesName }),
     });
     if (!res.ok) {
-      if (res.status === 409) toast.duplicateName();
-      else toast.saveFailed();
+      handleDuplicateOrSaveError(res);
       return;
     }
     toast.saved();
@@ -269,7 +280,7 @@ export default function AdminCoursesPage() {
           keyField="id"
           onRowClick={(course) => router.push(`/admin/courses/${course.id}`)}
           emptyMessage={
-            total === 0 && !debouncedSearch && !seriesFilterId
+            total === 0 && !debouncedSearch && !seriesFilterId && !statusFilter
               ? 'No courses yet.'
               : 'No courses match your filters.'
           }
@@ -301,6 +312,18 @@ export default function AdminCoursesPage() {
                   />
                 </div>
               )}
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  id="statusFilter"
+                  onChange={(value) => {
+                    setStatusFilter(value);
+                    setPage(1);
+                  }}
+                  options={STATUS_OPTIONS}
+                  placeholder="All statuses"
+                  value={statusFilter}
+                />
+              </div>
             </>
           }
         />
@@ -366,6 +389,7 @@ export default function AdminCoursesPage() {
           <form className="flex items-end gap-2" onSubmit={createSeries}>
             <div className="flex-1 min-w-0">
               <Input
+                autoFocus
                 id="newSeriesName"
                 label="New series name"
                 value={newSeriesName}
@@ -380,6 +404,7 @@ export default function AdminCoursesPage() {
       <Dialog isOpen={isCreateOpen} onClose={closeCreateDialog} title="New Course">
         <form className="space-y-5" onSubmit={createCourse} noValidate>
           <Input
+            autoFocus
             id="createTitle"
             label="Title"
             onChange={(e) => setCreateTitle(e.target.value)}

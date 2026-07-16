@@ -1,3 +1,4 @@
+import { forwardRef, useEffect } from 'react';
 import type { InputHTMLAttributes, ReactNode } from 'react';
 
 type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
@@ -10,19 +11,31 @@ type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
   variant?: 'default' | 'floating';
 };
 
-export function Input({
-  className = '',
-  error,
-  helperText,
-  id,
-  label,
-  leftIcon,
-  rightElement,
-  variant = 'default',
-  ...props
-}: InputProps) {
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
+  {
+    className = '',
+    error,
+    helperText,
+    id,
+    label,
+    leftIcon,
+    required,
+    rightElement,
+    variant = 'default',
+    ...props
+  },
+  ref,
+) {
   const hasLeftIcon = Boolean(leftIcon);
   const hasRightElement = Boolean(rightElement);
+
+  useEffect(() => {
+    if (!error) return;
+    const el = document.getElementById(id);
+    if (!(el instanceof HTMLInputElement)) return;
+    const firstInvalid = document.querySelector('[aria-invalid="true"]');
+    if (firstInvalid === el) el.focus();
+  }, [error, id]);
 
   if (variant === 'floating') {
     return (
@@ -35,6 +48,8 @@ export function Input({
           } ${hasLeftIcon ? 'pl-10' : ''} ${hasRightElement ? 'pr-12' : ''} ${className}`}
           id={id}
           placeholder=" "
+          ref={ref}
+          required={required}
           {...props}
         />
         {label && (
@@ -54,6 +69,7 @@ export function Input({
             `}
           >
             {label}
+            {required && <span className="ml-0.5 text-red-500">*</span>}
           </label>
         )}
         {rightElement && <div className="absolute inset-y-0 right-0 flex items-center pr-4">{rightElement}</div>}
@@ -71,6 +87,7 @@ export function Input({
       {label && (
         <label className="mb-1.5 block text-sm font-medium text-slate-700" htmlFor={id}>
           {label}
+          {required && <span className="ml-0.5 text-red-500">*</span>}
         </label>
       )}
       <div className="relative">
@@ -86,6 +103,8 @@ export function Input({
             error ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-slate-300 focus:bg-white focus:border-teal-400 focus:ring-4 focus:ring-teal-400/10'
           } ${hasLeftIcon ? 'pl-10' : 'pl-3'} ${hasRightElement ? 'pr-10' : 'pr-3'} ${className}`}
           id={id}
+          ref={ref}
+          required={required}
           {...props}
         />
         {rightElement && <div className="absolute inset-y-0 right-0 flex items-center pr-3">{rightElement}</div>}
@@ -97,4 +116,4 @@ export function Input({
       )}
     </div>
   );
-}
+});
