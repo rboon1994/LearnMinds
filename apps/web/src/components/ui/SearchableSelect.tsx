@@ -17,6 +17,7 @@ type BaseProps = {
   label?: string;
   options: SelectOption[];
   placeholder?: string;
+  required?: boolean;
 };
 
 type SingleSelectProps = BaseProps & {
@@ -34,7 +35,7 @@ type MultiSelectProps = BaseProps & {
 type SearchableSelectProps = SingleSelectProps | MultiSelectProps;
 
 export function SearchableSelect(props: SearchableSelectProps) {
-  const { className = '', error, helperText, id, label, options, placeholder = 'Search...' } = props;
+  const { className = '', error, helperText, id, label, options, placeholder = 'Search...', required } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -101,6 +102,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
       {label && (
         <label className="mb-1.5 block text-sm font-medium text-slate-700" htmlFor={id}>
           {label}
+          {required && <span className="ml-0.5 text-red-500">*</span>}
         </label>
       )}
       {props.multiple && selectedOptions.length > 0 && (

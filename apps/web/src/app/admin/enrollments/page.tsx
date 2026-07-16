@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AdminLayout } from '@/components/layout/AdminLayout';
+import { AdminTable } from '@/components/ui/AdminTable';
+import type { AdminTableColumn } from '@/components/ui/AdminTable';
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { Dialog } from '@/components/ui/Dialog';
+import { ConfirmDeleteDialog, Dialog } from '@/components/ui/Dialog';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { RadioGroup } from '@/components/ui/RadioGroup';
@@ -26,11 +29,22 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}` };
 }
 
+function validateEnrollmentForm(assignId: string, assignSeriesId: string) {
+  if (!assignId) return { error: 'Please select a student or tenant', field: 'assignId' };
+  if (!assignSeriesId) return { error: 'Please select a course series', field: 'assignSeriesId' };
+  return null;
+}
+
 export default function AdminEnrollmentsPage() {
   const { user } = useAuth();
   const router = useRouter();
   const toast = useToast();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
   const [students, setStudents] = useState<{ value: string; label: string }[]>([]);
   const [tenants, setTenants] = useState<{ value: string; label: string }[]>([]);
   const [seriesOptions, setSeriesOptions] = useState<{ value: string; label: string }[]>([]);
@@ -40,13 +54,32 @@ export default function AdminEnrollmentsPage() {
   const [assignId, setAssignId] = useState('');
   const [assignSeriesId, setAssignSeriesId] = useState('');
   const [assignExpiresAt, setAssignExpiresAt] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+
+  const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | null>(null);
+  const [editSeriesId, setEditSeriesId] = useState('');
+  const [editExpiresAt, setEditExpiresAt] = useState('');
+  const [editError, setEditError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const loadEnrollments = () => {
-    fetch(`${apiUrl}/enrollments`, { headers: authHeaders() })
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    fetch(`${apiUrl}/enrollments?${params.toString()}`, { headers: authHeaders() })
       .then((r) => r.json())
-      .then(setEnrollments)
+      .then((res: { data: Enrollment[]; total: number }) => {
+        setEnrollments(res.data);
+        setTotal(res.total);
+      })
       .catch(() => {});
   };
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [search]);
 
   useEffect(() => {
     if (user && user.role !== 'SUPER_ADMIN') {
@@ -55,10 +88,15 @@ export default function AdminEnrollmentsPage() {
     }
     if (!user) return;
     loadEnrollments();
-    fetch(`${apiUrl}/students`, { headers: authHeaders() })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, router, page, debouncedSearch]);
+
+  useEffect(() => {
+    if (!user || user.role !== 'SUPER_ADMIN') return;
+    fetch(`${apiUrl}/students?pageSize=100000`, { headers: authHeaders() })
       .then((r) => r.json())
-      .then((data: { id: string; fullName: string; email: string }[]) =>
-        setStudents(data.map((s) => ({ value: s.id, label: `${s.fullName} (${s.email})` }))),
+      .then((res: { data: { studentId: string; fullName: string; email: string }[] }) =>
+        setStudents(res.data.map((s) => ({ value: s.studentId, label: `${s.fullName} (${s.email})` }))),
       )
       .catch(() => {});
     fetch(`${apiUrl}/tenants`, { headers: authHeaders() })
@@ -73,7 +111,32 @@ export default function AdminEnrollmentsPage() {
         setSeriesOptions(data.map((s) => ({ value: s.id, label: s.name }))),
       )
       .catch(() => {});
-  }, [user, router]);
+  }, [user]);
+
+  const columns: AdminTableColumn<Enrollment>[] = [
+    {
+      header: 'Student / Tenant',
+      render: (enrollment) => (
+        <span className="font-medium text-slate-900">
+          {enrollment.student
+            ? (enrollment.student.user?.fullName ?? enrollment.student.user?.email)
+            : enrollment.tenant?.name}
+          <span
+            className={`ml-2 rounded-full px-2 py-0.5 text-xs font-normal ${
+              enrollment.student ? 'bg-teal-50 text-teal-700' : 'bg-blue-50 text-blue-700'
+            }`}
+          >
+            {enrollment.student ? 'Student' : 'Tenant'}
+          </span>
+        </span>
+      ),
+    },
+    { header: 'Course Series', render: (enrollment) => enrollment.series.name },
+    {
+      header: 'Expires At',
+      render: (enrollment) => (enrollment.expiresAt ? new Date(enrollment.expiresAt).toLocaleDateString() : '—'),
+    },
+  ];
 
   if (user && user.role !== 'SUPER_ADMIN') return null;
 
@@ -83,11 +146,18 @@ export default function AdminEnrollmentsPage() {
     setAssignId('');
     setAssignSeriesId('');
     setAssignExpiresAt('');
+    setCreateError('');
   };
 
   const createEnrollment = async (e: { preventDefault(): void }) => {
     e.preventDefault();
-    if (!assignId || !assignSeriesId) return;
+    const validation = validateEnrollmentForm(assignId, assignSeriesId);
+    if (validation) {
+      setCreateError(validation.error);
+      return;
+    }
+    setIsCreating(true);
+    setCreateError('');
     const res = await fetch(`${apiUrl}/enrollments`, {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -98,8 +168,9 @@ export default function AdminEnrollmentsPage() {
         expiresAt: assignExpiresAt || undefined,
       }),
     });
+    setIsCreating(false);
     if (!res.ok) {
-      toast.saveFailed();
+      setCreateError(res.status === 409 ? 'Already enrolled in this series' : 'Failed to create enrollment');
       return;
     }
     toast.saved();
@@ -107,14 +178,57 @@ export default function AdminEnrollmentsPage() {
     loadEnrollments();
   };
 
-  const revokeEnrollment = async (id: string) => {
-    if (!confirm('Revoke this enrollment?')) return;
-    const res = await fetch(`${apiUrl}/enrollments/${id}`, { method: 'DELETE', headers: authHeaders() });
+  const openEditDialog = (enrollment: Enrollment) => {
+    setEditingEnrollment(enrollment);
+    setEditSeriesId(enrollment.series.id);
+    setEditExpiresAt(enrollment.expiresAt ? enrollment.expiresAt.slice(0, 10) : '');
+    setEditError('');
+  };
+
+  const closeEditDialog = () => {
+    setEditingEnrollment(null);
+    setConfirmDelete(false);
+  };
+
+  const saveEnrollment = async (e: { preventDefault(): void }) => {
+    e.preventDefault();
+    if (!editingEnrollment) return;
+    if (!editSeriesId) {
+      setEditError('Please select a course series');
+      return;
+    }
+    setIsSaving(true);
+    setEditError('');
+    const res = await fetch(`${apiUrl}/enrollments/${editingEnrollment.id}`, {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        seriesId: editSeriesId,
+        expiresAt: editExpiresAt || undefined,
+      }),
+    });
+    setIsSaving(false);
+    if (!res.ok) {
+      setEditError(res.status === 409 ? 'Already enrolled in this series' : 'Failed to save enrollment');
+      return;
+    }
+    toast.saved();
+    closeEditDialog();
+    loadEnrollments();
+  };
+
+  const deleteEnrollment = async () => {
+    if (!editingEnrollment) return;
+    const res = await fetch(`${apiUrl}/enrollments/${editingEnrollment.id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
     if (!res.ok) {
       toast.deleteFailed();
       return;
     }
     toast.deleted();
+    closeEditDialog();
     loadEnrollments();
   };
 
@@ -126,61 +240,36 @@ export default function AdminEnrollmentsPage() {
         <Button
           leftIcon={<Icon name="plus" className="mr-1.5 h-4 w-4" />}
           onClick={() => setIsCreateOpen(true)}
-          variant="secondary"
+          variant="gradient"
         >
-          Create New Enrollment
+          New Enrollment
         </Button>
       }
     >
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-            <tr>
-              <th className="px-4 py-3 text-left">Student / Tenant</th>
-              <th className="px-4 py-3 text-left">Course Series</th>
-              <th className="px-4 py-3 text-left">Expires At</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {enrollments.map((enrollment) => (
-              <tr key={enrollment.id}>
-                <td className="px-4 py-3 font-medium text-slate-900">
-                  {enrollment.student
-                    ? (enrollment.student.user?.fullName ?? enrollment.student.user?.email)
-                    : enrollment.tenant?.name}
-                  <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-500">
-                    {enrollment.student ? 'Student' : 'Tenant'}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-slate-500">{enrollment.series.name}</td>
-                <td className="px-4 py-3 text-slate-500">
-                  {enrollment.expiresAt ? new Date(enrollment.expiresAt).toLocaleDateString() : '—'}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    className="text-red-500 hover:text-red-700"
-                    onClick={() => revokeEnrollment(enrollment.id)}
-                  >
-                    <Icon name="trash" className="h-4 w-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {enrollments.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
-                  No enrollments yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <AdminTable
+        columns={columns}
+        data={enrollments}
+        keyField="id"
+        onRowClick={openEditDialog}
+        emptyMessage={total === 0 && !debouncedSearch ? 'No enrollments yet.' : 'No enrollments match your search.'}
+        pagination={{ page, pageSize, total, onPageChange: setPage }}
+        toolbar={
+          <div className="flex-1 min-w-50">
+            <Input
+              id="searchEnrollments"
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search by student, tenant, or course series..."
+              value={search}
+            />
+          </div>
+        }
+      />
 
-      <Dialog isOpen={isCreateOpen} onClose={closeCreateDialog} title="Create New Enrollment">
-        <form className="space-y-4" onSubmit={createEnrollment}>
+      <Dialog isOpen={isCreateOpen} onClose={closeCreateDialog} title="New Enrollment">
+        <form className="space-y-5" onSubmit={createEnrollment} noValidate>
           <RadioGroup
             label="Assign to"
             name="assignType"
@@ -199,6 +288,7 @@ export default function AdminEnrollmentsPage() {
             label={assignType === 'STUDENT' ? 'Student' : 'Tenant'}
             onChange={setAssignId}
             options={assignType === 'STUDENT' ? students : tenants}
+            required
             value={assignId}
           />
           <SearchableSelect
@@ -206,18 +296,82 @@ export default function AdminEnrollmentsPage() {
             label="Course Series"
             onChange={setAssignSeriesId}
             options={seriesOptions}
+            required
             value={assignSeriesId}
           />
           <Input
             id="assignExpiresAt"
-            label="Expires At (optional)"
+            label="Expires At"
             type="date"
             value={assignExpiresAt}
             onChange={(e) => setAssignExpiresAt(e.target.value)}
           />
-          <Button type="submit">Create Enrollment</Button>
+          {createError && (
+            <Alert type="error" icon={<Icon name="error" className="h-4 w-4" />}>
+              {createError}
+            </Alert>
+          )}
+          <Button type="submit" isLoading={isCreating} loadingLabel="Creating...">
+            Create Enrollment
+          </Button>
         </form>
       </Dialog>
+
+      <Dialog isOpen={editingEnrollment !== null} onClose={closeEditDialog} title="Edit Enrollment">
+        <form className="space-y-5" onSubmit={saveEnrollment} noValidate>
+          <Input
+            id="editAssignee"
+            label={editingEnrollment?.student ? 'Student' : 'Tenant'}
+            disabled
+            value={
+              editingEnrollment?.student
+                ? (editingEnrollment.student.user?.fullName ?? editingEnrollment.student.user?.email ?? '')
+                : (editingEnrollment?.tenant?.name ?? '')
+            }
+          />
+          <SearchableSelect
+            id="editSeriesId"
+            label="Course Series"
+            onChange={setEditSeriesId}
+            options={seriesOptions}
+            required
+            value={editSeriesId}
+          />
+          <Input
+            id="editExpiresAt"
+            label="Expires At (optional)"
+            type="date"
+            value={editExpiresAt}
+            onChange={(e) => setEditExpiresAt(e.target.value)}
+          />
+          {editError && (
+            <Alert type="error" icon={<Icon name="error" className="h-4 w-4" />}>
+              {editError}
+            </Alert>
+          )}
+          <div className="flex gap-3">
+            <Button type="submit" isLoading={isSaving} loadingLabel="Saving...">
+              Save
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => setConfirmDelete(true)}
+              leftIcon={<Icon name="trash" className="h-4 w-4 mr-1.5" />}
+            >
+              Delete
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      <ConfirmDeleteDialog
+        isOpen={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={deleteEnrollment}
+        title="Delete Enrollment"
+        userEmail={user?.email ?? ''}
+      />
     </AdminLayout>
   );
 }

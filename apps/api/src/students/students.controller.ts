@@ -6,12 +6,14 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BulkRegisterStudentsDto } from './dto/bulk-register-students.dto';
+import { StudentsQueryDto } from './dto/students-query.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { StudentsService } from './students.service';
 
@@ -23,8 +25,8 @@ export class StudentsController {
   constructor(private svc: StudentsService) {}
 
   @Get()
-  findAll() {
-    return this.svc.findAll();
+  findAll(@Query() query: StudentsQueryDto) {
+    return this.svc.findAll(query);
   }
 
   @Get(':id')

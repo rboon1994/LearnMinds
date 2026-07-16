@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
 import { AdminLayout } from '@/components/layout/AdminLayout';
@@ -150,9 +150,12 @@ export default function AdminStudentsPage() {
   const router = useRouter();
   const toast = useToast();
   const [students, setStudents] = useState<Student[]>([]);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 10;
+  const [dedupStudents, setDedupStudents] = useState<Student[]>([]);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkError, setBulkError] = useState('');
   const [previewRows, setPreviewRows] = useState<PreviewRow[] | null>(null);
@@ -178,11 +181,30 @@ export default function AdminStudentsPage() {
   const [confirmResetPassword, setConfirmResetPassword] = useState(false);
 
   const load = () => {
-    fetch(`${apiUrl}/students`, { headers: authHeaders() })
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    fetch(`${apiUrl}/students?${params.toString()}`, { headers: authHeaders() })
       .then((r) => r.json())
-      .then(setStudents)
+      .then((res: { data: Student[]; total: number }) => {
+        setStudents(res.data);
+        setTotal(res.total);
+      })
       .catch(() => {});
   };
+
+  // Full unpaginated list for the Bulk Register duplicate check — fetched separately (only when
+  // that dialog opens) so the main table above can stay server-paginated.
+  const loadDedupStudents = () => {
+    fetch(`${apiUrl}/students?pageSize=100000`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((res: { data: Student[]; total: number }) => setDedupStudents(res.data))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [search]);
 
   useEffect(() => {
     if (user && user.role !== 'SUPER_ADMIN') {
@@ -191,26 +213,8 @@ export default function AdminStudentsPage() {
     }
     if (!user) return;
     load();
-  }, [user, router]);
-
-  const filteredStudents = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const queryDigits = query.replace(/\D/g, '');
-    if (!query) return students;
-    return students.filter((student) => {
-      const phoneDigits = `${student.phoneCountryCode ?? ''}${student.phoneNo ?? ''}`;
-      return (
-        student.fullName.toLowerCase().includes(query) ||
-        student.email.toLowerCase().includes(query) ||
-        (queryDigits && phoneDigits.includes(queryDigits))
-      );
-    });
-  }, [students, search]);
-
-  const pagedStudents = useMemo(
-    () => filteredStudents.slice((page - 1) * pageSize, page * pageSize),
-    [filteredStudents, page],
-  );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, router, page, debouncedSearch]);
 
   const uploadableCount =
     previewRows?.filter((row) => row.status !== 'error' && row.status !== 'duplicate').length ?? 0;
@@ -409,7 +413,7 @@ export default function AdminStudentsPage() {
           setBulkError('No rows found in file');
           return;
         }
-        setPreviewRows(classifyBulkRows(rows, students));
+        setPreviewRows(classifyBulkRows(rows, dedupStudents));
       },
       error: () => setBulkError('Failed to read file'),
     });
@@ -461,7 +465,10 @@ export default function AdminStudentsPage() {
         <>
           <Button
             leftIcon={<Icon name="upload" className="mr-1.5 h-4 w-4" />}
-            onClick={() => setIsBulkOpen(true)}
+            onClick={() => {
+              setIsBulkOpen(true);
+              loadDedupStudents();
+            }}
             variant="secondary"
           >
             Bulk Register
@@ -474,11 +481,11 @@ export default function AdminStudentsPage() {
     >
       <AdminTable
         columns={columns}
-        data={pagedStudents}
+        data={students}
         keyField="id"
         onRowClick={openEditDialog}
-        emptyMessage={students.length === 0 ? 'No students yet.' : 'No students match your search.'}
-        pagination={{ page, pageSize, total: filteredStudents.length, onPageChange: setPage }}
+        emptyMessage={total === 0 && !debouncedSearch ? 'No students yet.' : 'No students match your search.'}
+        pagination={{ page, pageSize, total, onPageChange: setPage }}
         toolbar={
           <div className="flex-1 min-w-50">
             <Input

@@ -1,8 +1,10 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Prisma, Role } from '@prisma/client';
+import { paginate } from '../common/paginate';
 import { PrismaService } from '../prisma/prisma.service';
 import type { StudentRowDto } from './dto/bulk-register-students.dto';
+import type { StudentsQueryDto } from './dto/students-query.dto';
 import type { UpdateStudentDto } from './dto/update-student.dto';
 
 // Fixed temp password for every bulk-registered Student — no per-row generation/distribution
@@ -17,6 +19,7 @@ export type BulkRegisterResult = {
 
 const selectFields = {
   id: true,
+  studentId: true,
   email: true,
   fullName: true,
   phoneCountryCode: true,
@@ -42,13 +45,39 @@ function toStudentDto<T extends { mustChangePassword: boolean }>({
 export class StudentsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    const rows = await this.prisma.user.findMany({
-      where: { studentId: { not: null } },
-      select: selectFields,
-      orderBy: { createdAt: 'desc' },
-    });
-    return rows.map(toStudentDto);
+  // Phone search matches phoneCountryCode/phoneNo as separate columns (each via `contains`), not
+  // the two concatenated — Prisma can't filter on a computed concat without raw SQL. Covers
+  // searching by just the local number or just the country code; doesn't match the exact
+  // country-code+number typed as one unbroken string (e.g. "60123456789").
+  async findAll(query: StudentsQueryDto) {
+    const search = query.search?.trim();
+    const searchDigits = search?.replace(/\D/g, '');
+    const where: Prisma.UserWhereInput = {
+      studentId: { not: null },
+      ...(search
+        ? {
+            OR: [
+              { fullName: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+              ...(searchDigits
+                ? [
+                    { phoneNo: { contains: searchDigits } },
+                    { phoneCountryCode: { contains: searchDigits } },
+                  ]
+                : []),
+            ],
+          }
+        : {}),
+    };
+    const result = await paginate<
+      Prisma.UserGetPayload<{ select: typeof selectFields }>,
+      Prisma.UserWhereInput
+    >(
+      this.prisma.user,
+      { where, select: selectFields, orderBy: { createdAt: 'desc' } },
+      { page: query.page, pageSize: query.pageSize },
+    );
+    return { ...result, data: result.data.map(toStudentDto) };
   }
 
   async findOne(id: string) {
