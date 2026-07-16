@@ -1,7 +1,8 @@
 # Course-Level Enrollment — Design
 
-Status: Approved (spec review round 1 applied — cascade explicitness, update() type-lock
-enforcement, null-safe date formatting, branch-based validation)
+Status: Approved (2 review rounds applied — cascade explicitness, update() type-lock enforcement,
+null-safe date formatting, branch-based validation, DB-level CHECK constraints for both XOR pairs,
+verified no Series-container gap on Learn, debounced server-search course picker)
 Date: 2026-07-17
 
 ## Problem
@@ -47,7 +48,25 @@ neither will gate anyone's access until that separate gap is addressed.
   `@@unique([courseId, tenantId])`
 - New index: `@@index([courseId])`
 
-Migration goes through `prisma migrate dev` (project hard rule — no hand-written SQL DDL).
+Migration goes through `prisma migrate dev` (project hard rule — no hand-written SQL DDL for
+*creating* schema objects). One exception, using the same sanctioned pattern already established in
+this codebase (`migrations/20260715061456_relax_student_tenant_constraint` hand-adds a `CHECK`
+constraint via `prisma migrate dev --create-only`, since Prisma's schema DSL cannot express `CHECK`
+constraints natively): the application-layer XOR validation in `EnrollmentsService` (both the
+existing `studentId`/`tenantId` exclusivity and the new `seriesId`/`courseId` one) has never had a
+DB-level backstop — a script or future caller going through `prisma.enrollment.create()` directly,
+bypassing the service, could still write invalid rows. Since we're already migrating this table,
+add both as real constraints in the same migration:
+
+```sql
+ALTER TABLE "Enrollment" ADD CONSTRAINT chk_enrollment_assignee
+  CHECK (("studentId" IS NOT NULL) <> ("tenantId" IS NOT NULL));
+ALTER TABLE "Enrollment" ADD CONSTRAINT chk_enrollment_target
+  CHECK (("seriesId" IS NOT NULL) <> ("courseId" IS NOT NULL));
+```
+
+This closes the pre-existing `studentId`/`tenantId` gap for free while we're here, not just the new
+one.
 
 ## Backend logic
 
@@ -62,7 +81,12 @@ the shared `paginate()` helper + `enrollmentInclude`, ahead of this feature)
   call could still flip it. `update()` loads the existing enrollment first and rejects (with
   `BadRequestException`) any `dto` that targets the field the enrollment *doesn't* currently use
   (e.g. an enrollment with `seriesId` set must reject a `dto.courseId`, and vice versa) — defense in
-  depth, not just client-side.
+  depth, not just client-side. This check (and the `create()` XOR check) must treat an explicitly
+  sent `null` the same as an omitted field — some form libraries send inactive fields as `null`
+  rather than leaving them out (e.g. `{ seriesId: "123", courseId: null }`). `Boolean(x)` already
+  does this correctly (`Boolean(null) === Boolean(undefined) === false`), so use that same loose
+  style consistently — never a strict `dto.courseId !== undefined` check, which would misfire on an
+  explicit `null`.
 - `create()`/`update()` pass `seriesId`/`courseId` straight through; the existing `P2002` catch
   (duplicate enrollment) now also covers the two new unique constraints — no new catch needed.
 - `enrollmentInclude` gains `course: { select: { id, title, startDate, endDate } }` alongside the
@@ -93,13 +117,24 @@ if (actor.role === Role.STUDENT) {
 
 Tenant-side (`tenantId`) is intentionally not added here — see Scope boundary above.
 
-**New endpoint** — `GET /courses/admin/list` (`SUPER_ADMIN`-only). Reuses the existing
+**Verified: no separate "Series container" to gate.** Checked the current Learn page
+(`apps/web/src/app/learn/page.tsx`) directly — it's a flat Course grid (`GET /courses`, cards
+linking straight to `/learn/${course.id}`), not a Series-grouped view; grepping
+`apps/web/src/app/learn/` for `series`/`seriesId` returns nothing. So a directly-enrolled standalone
+course has no separate Series-level visibility gate to clear — the `visibilityWhere` change above
+is sufficient on its own, confirmed against the real code rather than assumed.
+
+**New endpoint** — `GET /courses/admin/list` (`SUPER_ADMIN`-only, same `RolesGuard` class-level
+guard as the rest of `EnrollmentsController`/`CoursesController`'s admin routes — enrolling a
+Student or Tenant remains exclusively a Super Admin action, unchanged by this feature). Reuses the existing
 `CoursesQueryDto` (already has `search`/`page`/`pageSize`) and the shared `paginate()` helper,
 selecting only `{ id, title, startDate, endDate }`, ordered by `title` — same paginated shape as
-`GET /students`/`GET /enrollments`, not a bespoke unpaginated flat list (courses can scale the same
-way students/enrollments can; no point reintroducing the exact issue just fixed elsewhere). The
-frontend populates the picker the same way it now populates the Student dropdown: one fetch with a
-large `pageSize` on dialog mount, not per-keystroke.
+`GET /students`/`GET /enrollments`. Unlike the Student picker (which prefetches everything with a
+large `pageSize` — an existing, separate decision, not touched here), the Course picker debounces
+and re-queries this endpoint server-side as the admin types (see Frontend section) — a course
+catalog can grow large over years of content, and course entries need a more expensive per-row
+disambiguation (title + date range) than a one-line student name/email, so prefetching everything
+doesn't scale the same way.
 
 **DTOs** — `CreateEnrollmentDto`/`UpdateEnrollmentDto`: `seriesId` becomes optional, add optional
 `courseId`.
@@ -109,9 +144,15 @@ large `pageSize` on dialog mount, not per-keystroke.
 - New `RadioGroup` **"Enroll in: Course Series / Individual Course"** in the Create dialog,
   parallel to the existing "Assign to" toggle. Switching it clears the current series/course
   selection (same pattern as switching Student/Tenant clears `assignId`).
-- The `SearchableSelect` beneath it swaps `options` between `seriesOptions` (existing) and a new
-  `courseOptions` (from `GET /courses/admin/list`, fetched once with a large `pageSize` on mount —
-  same pattern as the Student dropdown), based on the toggle. Course option labels are
+- `SearchableSelect` gains one new optional prop, `onQueryChange?: (query: string) => void`,
+  fired alongside its existing internal `setQuery` in the input's `onChange` — purely additive,
+  opt-in, doesn't touch behavior for its 5 existing consumers (`enrollments`, `courses` admin
+  pages ×2, `learn` page) since none pass it today.
+- The `SearchableSelect` beneath the new toggle swaps `options` between `seriesOptions` (existing,
+  unpaginated small list, unchanged) and a new `courseOptions`, based on the toggle. `courseOptions`
+  is populated by debouncing `onQueryChange` (same `setTimeout`-based debounce already used for the
+  main table's `debouncedSearch` in this file) into `GET /courses/admin/list?search=...`, re-fetching
+  as the admin types — not a one-shot large-`pageSize` prefetch. Course option labels are
   `"${title} (${formatDateRange(startDate, endDate)})"` — reusing the existing
   `formatDateRange` helper from `@/lib/duration.ts` (same formatting as the Learn page), since
   course titles can repeat across instances and only the date range disambiguates them.
@@ -144,3 +185,7 @@ large `pageSize` on dialog mount, not per-keystroke.
   staying invisible to a different student.
 - A check for `update()`'s server-side type-lock: a `PATCH` on a series-based enrollment carrying
   `courseId` (or vice versa) must be rejected, not silently accepted.
+- A check that the two new DB-level `CHECK` constraints actually reject bad rows when written via
+  `prisma.enrollment.create()` directly (bypassing `EnrollmentsService`) — e.g. both `seriesId` and
+  `courseId` null, or both set — confirming the constraint fires, not just that the SQL applied
+  cleanly during migration.
