@@ -21,7 +21,7 @@ export class AuthService {
   async validateUser(email: string, password: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) throw new UnauthorizedException('Invalid credentials');
-    if (user.status !== Status.ACTIVE)
+    if (user.status === Status.SUSPENDED)
       throw new ForbiddenException('Account is not active');
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
@@ -85,7 +85,7 @@ export class AuthService {
     const hashed = await bcrypt.hash(newPassword, 10);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { password: hashed, mustChangePassword: false },
+      data: { password: hashed, mustChangePassword: false, status: Status.ACTIVE },
     });
     return { success: true };
   }
