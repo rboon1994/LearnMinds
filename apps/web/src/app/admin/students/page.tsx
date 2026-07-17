@@ -24,7 +24,7 @@ type Student = {
   fullName: string;
   phoneCountryCode: string | null;
   phoneNo: string | null;
-  status: 'ACTIVE' | 'INACTIVE';
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   lastSignInAt: string | null;
 };
 
@@ -58,6 +58,12 @@ const STATUS_SORT_ORDER: Record<Exclude<RowStatus, 'ok'>, number> = {
   error: 0,
   duplicate: 1,
   warning: 2,
+};
+
+const ACCOUNT_STATUS_BADGE_CLASSES: Record<Student['status'], string> = {
+  ACTIVE: 'bg-green-100 text-green-700',
+  INACTIVE: 'bg-slate-100 text-slate-600',
+  SUSPENDED: 'bg-red-100 text-red-700',
 };
 
 function phoneKey(row: { phoneCountryCode?: string | null; phoneNo?: string | null }) {
@@ -239,9 +245,7 @@ export default function AdminStudentsPage() {
       header: 'Status',
       render: (student) => (
         <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            student.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'
-          }`}
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${ACCOUNT_STATUS_BADGE_CLASSES[student.status]}`}
         >
           {student.status}
         </span>
@@ -494,7 +498,7 @@ export default function AdminStudentsPage() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Search by name, email address, or phone number..."
+              placeholder="Search by full name, email address, or phone number..."
               value={search}
             />
           </div>
