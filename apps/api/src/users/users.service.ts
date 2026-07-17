@@ -105,11 +105,23 @@ export class UsersService {
 
   async update(id: string, dto: UpdateUserDto, scope: ScopeFilter) {
     const existing = await this.findOneScoped(id, scope);
-    if (dto.departmentId && existing.tenantId) {
-      await this.assertDepartmentInTenant(dto.departmentId, existing.tenantId);
+
+    // Build data object explicitly: only persist departmentId for role=USER rows
+    const data: Prisma.UserUpdateInput = {
+      ...(dto.fullName !== undefined && { fullName: dto.fullName }),
+      ...(dto.email !== undefined && { email: dto.email }),
+      ...(dto.phoneCountryCode !== undefined && { phoneCountryCode: dto.phoneCountryCode }),
+      ...(dto.phoneNo !== undefined && { phoneNo: dto.phoneNo }),
+    };
+
+    // Only persist departmentId for Tenant Users (role=USER), and validate it
+    if (existing.role === Role.USER && dto.departmentId) {
+      await this.assertDepartmentInTenant(dto.departmentId, existing.tenantId as string);
+      data.departmentId = dto.departmentId;
     }
+
     try {
-      return await this.prisma.user.update({ where: { id }, data: dto, select: selectFields });
+      return await this.prisma.user.update({ where: { id }, data, select: selectFields });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException('Email already registered');

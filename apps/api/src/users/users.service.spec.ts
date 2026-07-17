@@ -86,4 +86,38 @@ describe('UsersService', () => {
     });
     expect(prisma.user.create).not.toHaveBeenCalled();
   });
+
+  it('update does not persist departmentId on a Platform Admin row (role=SUPER_ADMIN, tenantId=null)', async () => {
+    const prisma = makePrismaMock();
+    prisma.user.findFirstOrThrow.mockResolvedValue({
+      id: 'admin-1',
+      role: Role.SUPER_ADMIN,
+      tenantId: null,
+    });
+    prisma.user.update.mockResolvedValue({
+      id: 'admin-1',
+      email: 'admin@example.com',
+      fullName: 'Updated Admin',
+      role: Role.SUPER_ADMIN,
+      tenantId: null,
+      departmentId: null,
+    });
+
+    const svc = new UsersService(prisma as any);
+    await svc.update('admin-1', { fullName: 'Updated Admin', departmentId: 'dept-x' }, null);
+
+    // Should NOT have called department validation
+    expect(prisma.department.findFirstOrThrow).not.toHaveBeenCalled();
+
+    // Should have called update with the right shape
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'admin-1' },
+      data: expect.objectContaining({ fullName: 'Updated Admin' }),
+      select: expect.anything(),
+    });
+
+    // Verify departmentId is NOT in the data object
+    const updateCallData = prisma.user.update.mock.calls[0][0].data;
+    expect(updateCallData).not.toHaveProperty('departmentId');
+  });
 });
