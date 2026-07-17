@@ -30,3 +30,6 @@ pnpm-debug.log*
 
 # Superpower specs
 docs/superpowers/specs/
+
+# Subagent-driven-development scratch (progress ledger, task briefs/reports)
+.superpowers/
