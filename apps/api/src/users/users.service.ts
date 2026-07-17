@@ -106,8 +106,10 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto, scope: ScopeFilter) {
     const existing = await this.findOneScoped(id, scope);
 
-    // Build data object explicitly: only persist departmentId for role=USER rows
-    const data: Prisma.UserUpdateInput = {
+    // Build data object explicitly: only persist departmentId for role=USER rows.
+    // UserUncheckedUpdateInput (not UserUpdateInput) is required here — the "checked" variant
+    // replaces the departmentId FK scalar with a nested `department` relation object instead.
+    const data: Prisma.UserUncheckedUpdateInput = {
       ...(dto.fullName !== undefined && { fullName: dto.fullName }),
       ...(dto.email !== undefined && { email: dto.email }),
       ...(dto.phoneCountryCode !== undefined && { phoneCountryCode: dto.phoneCountryCode }),
