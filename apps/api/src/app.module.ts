@@ -13,6 +13,7 @@ import { TenantsModule } from './tenants/tenants.module';
 import { CourseSeriesModule } from './course-series/course-series.module';
 import { EnrollmentsModule } from './enrollments/enrollments.module';
 import { SpeakersModule } from './speakers/speakers.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { SpeakersModule } from './speakers/speakers.module';
     AdminFeaturesModule,
     CoursesModule,
     StudentsModule,
+    UsersModule,
     TenantsModule,
     CourseSeriesModule,
     EnrollmentsModule,
