@@ -3,13 +3,10 @@ import * as bcrypt from 'bcrypt';
 import { Prisma, Role } from '@prisma/client';
 import { paginate } from '../common/paginate';
 import { PrismaService } from '../prisma/prisma.service';
+import { TEMP_PASSWORD } from '../common/temp-password';
 import type { StudentRowDto } from './dto/bulk-register-students.dto';
 import type { StudentsQueryDto } from './dto/students-query.dto';
 import type { UpdateStudentDto } from './dto/update-student.dto';
-
-// Fixed temp password for every bulk-registered Student — no per-row generation/distribution
-// needed; mustChangePassword forces them off it on first login.
-const TEMP_PASSWORD = 'BeProminds';
 
 export type BulkRegisterResult = {
   email: string;
