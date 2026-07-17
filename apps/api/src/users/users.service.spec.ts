@@ -120,4 +120,30 @@ describe('UsersService', () => {
     const updateCallData = prisma.user.update.mock.calls[0][0].data;
     expect(updateCallData).not.toHaveProperty('departmentId');
   });
+
+  it('create sets status: INACTIVE on a new row', async () => {
+    const prisma = makePrismaMock();
+    prisma.user.create.mockResolvedValue({ id: 'user-1', status: 'INACTIVE' });
+    const svc = new UsersService(prisma as any);
+    await svc.create(
+      { scope: UserScope.PLATFORM, fullName: 'Jane', email: 'jane@example.com' } as any,
+      null,
+    );
+    expect(prisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'INACTIVE' }) }),
+    );
+  });
+
+  it('resetPassword sets status back to INACTIVE', async () => {
+    const prisma = makePrismaMock();
+    prisma.user.findFirstOrThrow.mockResolvedValue({ id: 'user-1', role: Role.USER, tenantId: 'tenant-a' });
+    prisma.user.update.mockResolvedValue({ id: 'user-1', status: 'INACTIVE' });
+    const svc = new UsersService(prisma as any);
+    await svc.resetPassword('user-1', { role: Role.USER, tenantId: 'tenant-a' });
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ mustChangePassword: true, status: 'INACTIVE' }),
+      }),
+    );
+  });
 });

@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { Prisma, Role } from '@prisma/client';
+import { Prisma, Role, Status } from '@prisma/client';
 import { paginate } from '../common/paginate';
 import { PrismaService } from '../prisma/prisma.service';
 import { TEMP_PASSWORD } from '../common/temp-password';
@@ -84,6 +84,7 @@ export class UsersService {
           tenantId: role === Role.SUPER_ADMIN ? null : tenantId,
           departmentId: role === Role.USER ? dto.departmentId : undefined,
           mustChangePassword: true,
+          status: Status.INACTIVE,
         },
         select: selectFields,
       });
@@ -142,7 +143,7 @@ export class UsersService {
     const hashed = await bcrypt.hash(TEMP_PASSWORD, 10);
     return this.prisma.user.update({
       where: { id },
-      data: { password: hashed, mustChangePassword: true },
+      data: { password: hashed, mustChangePassword: true, status: Status.INACTIVE },
       select: selectFields,
     });
   }
