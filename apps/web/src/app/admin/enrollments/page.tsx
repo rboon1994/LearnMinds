@@ -375,7 +375,7 @@ export default function AdminEnrollmentsPage() {
             value={assignId}
           />
           <RadioGroup
-            label="Enroll in"
+            label="Enrollment Type"
             name="assignContentType"
             onChange={(value) => {
               setAssignContentType(value as ContentType);

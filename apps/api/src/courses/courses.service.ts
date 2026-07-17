@@ -101,20 +101,69 @@ export class CoursesService {
     );
   }
 
-  // Role-aware browse list for /learn: Super Admin sees every course including drafts (the
-  // "全部 Courses...可浏览草稿和已发布的" requirement — this previously always filtered to
-  // PUBLISHED regardless of role, hiding drafts from Super Admin here too); Admin sees their
-  // own tenant's courses at any status plus published global ones; everyone else (USER) only
-  // sees published tenant-or-global courses. Mirrors visibilityWhere used for single-course reads.
-  findBrowsable(actor: Actor) {
-    return this.prisma.course.findMany({
-      where: this.visibilityWhere(actor),
+  // Learn-page browse: returns global courses (tenantId: null) with isEnrolled flag.
+  // SUPER_ADMIN sees all statuses (including DRAFT) with no enrollment lock.
+  // Everyone else sees only PUBLISHED; isEnrolled is computed from active Enrollment records.
+  async findBrowsable(actor: Actor) {
+    // Bug fix 1: SUPER_ADMIN must not have the status filter — they need to see DRAFT too.
+    if (actor.role === Role.SUPER_ADMIN) {
+      const courses = await this.prisma.course.findMany({
+        where: { tenantId: null },
+        include: {
+          _count: { select: { lessons: true } },
+          speakers: { select: { id: true, name: true, thumbnail: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return courses.map((c) => ({ ...c, isEnrolled: true }));
+    }
+
+    const courses = await this.prisma.course.findMany({
+      where: { tenantId: null, status: ContentStatus.PUBLISHED },
       include: {
         _count: { select: { lessons: true } },
-        speakers: { select: { id: true, name: true } },
+        speakers: { select: { id: true, name: true, thumbnail: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Bug fix 2: studentId is not in the JWT so actor.studentId is undefined.
+    // Prisma silently ignores undefined in where clauses, turning { studentId: undefined }
+    // into an unconstrained query that returns all enrollments. Guard with a truthiness check.
+    const relevantId =
+      actor.role === Role.STUDENT ? actor.studentId : actor.tenantId;
+
+    if (!relevantId) {
+      return courses.map((c) => ({ ...c, isEnrolled: false }));
+    }
+
+    const now = new Date();
+    const enrollmentWhere =
+      actor.role === Role.STUDENT
+        ? { studentId: relevantId }
+        : { tenantId: relevantId };
+
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: {
+        ...enrollmentWhere,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: { seriesId: true, courseId: true },
+    });
+
+    const enrolledSeriesIds = new Set(
+      enrollments.map((e) => e.seriesId).filter(Boolean),
+    );
+    const enrolledCourseIds = new Set(
+      enrollments.map((e) => e.courseId).filter(Boolean),
+    );
+
+    return courses.map((c) => ({
+      ...c,
+      isEnrolled:
+        (c.seriesId != null && enrolledSeriesIds.has(c.seriesId)) ||
+        enrolledCourseIds.has(c.id),
+    }));
   }
 
   async findOne(id: string, actor: Actor) {
@@ -195,6 +244,9 @@ export class CoursesService {
     if (actor.role === Role.SUPER_ADMIN) return {};
     if (actor.role === Role.ADMIN) return { tenantId: actor.tenantId };
     if (actor.role === Role.STUDENT) {
+      // studentId is not in the JWT — guard before using it in a Prisma where clause,
+      // since Prisma silently ignores undefined and would match any enrollment.
+      if (!actor.studentId) return { id: { in: [] as string[] } };
       const now = new Date();
       const notExpired = { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
       return {

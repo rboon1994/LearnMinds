@@ -153,6 +153,10 @@ model Course {
   seriesId    String?
   series      CourseSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   speakers    Speaker[]
+  // Powers the "Contact via WhatsApp" button on /learn's locked-course modal — Super-Admin-only,
+  // same as Series/Speaker. Button is hidden entirely on /learn when whatsappNumber is unset.
+  whatsappNumber  String?
+  whatsappMessage String?
   createdById String?
   createdBy   User?         @relation(fields: [createdById], references: [id])
   lessons     Lesson[]

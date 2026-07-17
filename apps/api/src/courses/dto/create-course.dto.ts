@@ -42,4 +42,12 @@ export class CreateCourseDto {
   @IsString({ each: true })
   @IsOptional()
   speakerIds?: string[];
+
+  @IsString()
+  @IsOptional()
+  whatsappNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  whatsappMessage?: string;
 }

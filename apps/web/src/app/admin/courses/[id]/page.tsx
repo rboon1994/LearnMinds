@@ -47,6 +47,8 @@ type Course = {
   endDate: string | null;
   seriesId: string | null;
   speakers: { id: string; name: string }[];
+  whatsappNumber: string | null;
+  whatsappMessage: string | null;
   status: 'DRAFT' | 'PUBLISHED';
   lessons: Lesson[];
   files: CourseFile[];
@@ -111,6 +113,8 @@ export default function EditCoursePage() {
   const [seriesOptions, setSeriesOptions] = useState<{ value: string; label: string }[]>([]);
   const [speakerIds, setSpeakerIds] = useState<string[]>([]);
   const [speakerOptions, setSpeakerOptions] = useState<{ value: string; label: string }[]>([]);
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [whatsappMessage, setWhatsappMessage] = useState('');
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
   const [isAddLessonOpen, setIsAddLessonOpen] = useState(false);
@@ -133,6 +137,8 @@ export default function EditCoursePage() {
         setEndDate(data.endDate?.slice(0, 10) ?? '');
         setSeriesId(data.seriesId ?? '');
         setSpeakerIds(data.speakers.map((s) => s.id));
+        setWhatsappNumber(data.whatsappNumber ?? '');
+        setWhatsappMessage(data.whatsappMessage ?? '');
       })
       .catch(() => setError('Failed to load course'));
   };
@@ -179,6 +185,8 @@ export default function EditCoursePage() {
         endDate: endDate || null,
         seriesId: seriesId || null,
         speakerIds,
+        whatsappNumber: whatsappNumber || null,
+        whatsappMessage: whatsappMessage || null,
       }),
     });
     setSavingMeta(false);
@@ -504,6 +512,25 @@ export default function EditCoursePage() {
                 options={speakerOptions}
                 placeholder="No speaker"
                 value={speakerIds}
+              />
+            )}
+            {isSuperAdmin && (
+              <Input
+                id="whatsappNumber"
+                label="WhatsApp Number"
+                onChange={(e) => setWhatsappNumber(e.target.value)}
+                placeholder="e.g. 60123456789"
+                value={whatsappNumber}
+              />
+            )}
+            {isSuperAdmin && (
+              <Textarea
+                id="whatsappMessage"
+                label="WhatsApp Message"
+                onChange={(e) => setWhatsappMessage(e.target.value)}
+                placeholder="Pre-filled message sent when a student taps Contact via WhatsApp"
+                rows={3}
+                value={whatsappMessage}
               />
             )}
             {error && (

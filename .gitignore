@@ -28,8 +28,15 @@ Thumbs.db
 npm-debug.log*
 pnpm-debug.log*
 
-# Superpower specs
-docs/superpowers/specs/
-
 # Subagent-driven-development scratch (progress ledger, task briefs/reports)
 .superpowers/
+
+# Superpowers specs/plans
+docs/superpowers/specs/
+docs/superpowers/plans/
+
+# Playwright MCP
+.playwright-mcp/
+
+# Ruflo runtime state (daemon pid, metrics — changes every session)
+.claude-flow/

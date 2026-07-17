@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Icon } from '@/components/ui/Icon';
@@ -59,6 +59,7 @@ async function downloadBlob(url: string, fileName: string) {
 export default function CourseDetailPage() {
   const { user } = useAuth();
   const params = useParams<{ courseId: string }>();
+  const router = useRouter();
   const [course, setCourse] = useState<Course | null>(null);
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [videoSrc, setVideoSrc] = useState<{ url: string; type: string } | null>(null);
@@ -66,13 +67,17 @@ export default function CourseDetailPage() {
 
   useEffect(() => {
     fetch(`${apiUrl}/courses/${params.courseId}`, { headers: authHeaders() })
-      .then((r) => r.json())
-      .then((data: Course) => {
+      .then((r) => {
+        if (!r.ok) { router.replace('/learn'); return null; }
+        return r.json();
+      })
+      .then((data: Course | null) => {
+        if (!data) return;
         setCourse(data);
         setActiveLessonId(data.lessons[0]?.id ?? null);
       })
       .catch(() => {});
-  }, [params.courseId]);
+  }, [params.courseId, router]);
 
   const activeLesson = course?.lessons.find((l) => l.id === activeLessonId) ?? null;
   const activeLessonIndex = course?.lessons.findIndex((l) => l.id === activeLessonId) ?? -1;
@@ -107,7 +112,7 @@ export default function CourseDetailPage() {
     <div className="min-h-screen bg-slate-50 flex">
       <Navigation user={navUser} mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
       <div className="flex-1 min-w-0 flex flex-col">
-        <PageHeader defaultTitle={course.title} onOpenMobileMenu={() => setMobileMenuOpen(true)}>
+        <PageHeader defaultTitle={course.title} backHref="/learn" onOpenMobileMenu={() => setMobileMenuOpen(true)}>
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
             {/* Source order is Video, then a Lessons+Files wrapper, so mobile (single-column)
                 stacks Video/Lessons/Files in that order. On lg: this becomes the left column;
