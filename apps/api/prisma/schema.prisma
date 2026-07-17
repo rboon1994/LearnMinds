@@ -157,6 +157,7 @@ model Course {
   createdBy   User?         @relation(fields: [createdById], references: [id])
   lessons     Lesson[]
   files       CourseFile[]
+  enrollments Enrollment[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -204,26 +205,33 @@ model CourseFile {
   @@index([courseId])
 }
 
-// Access-grant record only (no payment/order fields this round). Targets a CourseSeries (not an
-// individual dated Course row) — enrolling grants access to every Course under that series, so
-// a newly-added re-run of the same series is immediately visible without a new Enrollment.
-// Exactly one of studentId/tenantId must be set — enforced in EnrollmentsService, not
-// declaratively expressible here.
+// Access-grant record only (no payment/order fields this round). Targets either a CourseSeries
+// (enrolling grants access to every Course under that series, so a newly-added re-run of the same
+// series is immediately visible without a new Enrollment) or a single standalone Course, directly
+// and independently of that course's series enrollment. Exactly one of studentId/tenantId, and
+// exactly one of seriesId/courseId, must be set — enforced in EnrollmentsService AND backstopped by
+// DB-level CHECK constraints (chk_enrollment_assignee/chk_enrollment_target, added by hand in the
+// migration since Prisma's schema DSL can't express CHECK constraints declaratively).
 model Enrollment {
-  id           String       @id @default(cuid())
-  seriesId     String
-  series       CourseSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  id           String        @id @default(cuid())
+  seriesId     String?
+  series       CourseSeries? @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  courseId     String?
+  course       Course?       @relation(fields: [courseId], references: [id], onDelete: Cascade)
   studentId    String?
-  student      Student?     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student      Student?      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   tenantId     String?
-  tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   enrolledById String
-  enrolledBy   User         @relation(fields: [enrolledById], references: [id])
+  enrolledBy   User          @relation(fields: [enrolledById], references: [id])
   expiresAt    DateTime?
-  createdAt    DateTime     @default(now())
+  createdAt    DateTime      @default(now())
 
   @@unique([seriesId, studentId])
   @@unique([seriesId, tenantId])
+  @@unique([courseId, studentId])
+  @@unique([courseId, tenantId])
+  @@index([courseId])
   @@index([studentId])
   @@index([tenantId])
   @@index([seriesId])

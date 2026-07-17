@@ -81,6 +81,26 @@ export class CoursesService {
     );
   }
 
+  // Flat, minimal-field picker source for the admin Enrollments "Individual Course" dropdown —
+  // paginated + searchable like everything else the picker pattern reuses (students, enrollments),
+  // not a bespoke unpaginated list, since the course catalog can grow the same way those can.
+  findAllFlat(query: CoursesQueryDto) {
+    return paginate<
+      Prisma.CourseGetPayload<{
+        select: { id: true; title: true; startDate: true; endDate: true };
+      }>,
+      Prisma.CourseWhereInput
+    >(
+      this.prisma.course,
+      {
+        where: searchFilterWhere(query),
+        select: { id: true, title: true, startDate: true, endDate: true },
+        orderBy: { title: 'asc' },
+      },
+      { page: query.page, pageSize: query.pageSize },
+    );
+  }
+
   // Role-aware browse list for /learn: Super Admin sees every course including drafts (the
   // "全部 Courses...可浏览草稿和已发布的" requirement — this previously always filtered to
   // PUBLISHED regardless of role, hiding drafts from Super Admin here too); Admin sees their
@@ -167,25 +187,22 @@ export class CoursesService {
 
   // Read-visibility rules, shared by findOne/assertVisible/findBrowsable: Admin sees their
   // tenant's courses (draft+published), Super Admin sees everything (including every tenant's
-  // drafts — no filter at all), Student sees only currently-enrolled+published (never Draft, never
-  // "all global courses" — must be explicitly assigned by Super Admin via a CourseSeries
-  // enrollment; a course with no series can never be Student-visible), everyone else (USER) only
-  // sees published tenant-or-global courses.
+  // drafts — no filter at all), Student sees only currently-enrolled+published — either via a
+  // CourseSeries enrollment (unlocks every course under that series) or a direct Enrollment on
+  // the course itself (independent of that course's series enrollment status), everyone else
+  // (USER) only sees published tenant-or-global courses.
   private visibilityWhere(actor: Actor) {
     if (actor.role === Role.SUPER_ADMIN) return {};
     if (actor.role === Role.ADMIN) return { tenantId: actor.tenantId };
     if (actor.role === Role.STUDENT) {
       const now = new Date();
+      const notExpired = { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
       return {
         status: ContentStatus.PUBLISHED,
-        series: {
-          enrollments: {
-            some: {
-              studentId: actor.studentId,
-              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-            },
-          },
-        },
+        OR: [
+          { series: { enrollments: { some: { studentId: actor.studentId, ...notExpired } } } },
+          { enrollments: { some: { studentId: actor.studentId, ...notExpired } } },
+        ],
       };
     }
     return {

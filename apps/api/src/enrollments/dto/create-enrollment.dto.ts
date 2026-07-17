@@ -2,7 +2,12 @@ import { IsDateString, IsOptional, IsString } from 'class-validator';
 
 export class CreateEnrollmentDto {
   @IsString()
-  seriesId: string;
+  @IsOptional()
+  seriesId?: string;
+
+  @IsString()
+  @IsOptional()
+  courseId?: string;
 
   @IsString()
   @IsOptional()

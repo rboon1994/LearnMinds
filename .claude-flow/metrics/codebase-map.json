@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-07-16T18:04:36.172Z",
-  "projectRoot": "c:\\Users\\User\\Documents\\LearnMinds",
+  "timestamp": "2026-07-17T08:33:49.248Z",
+  "projectRoot": "C:\\Users\\User\\Documents\\LearnMinds",
   "structure": {
     "hasPackageJson": true,
     "hasTsConfig": false,
     "hasClaudeConfig": true,
     "hasClaudeFlow": true
   },
-  "scannedAt": 1784225076173
+  "scannedAt": 1784277229248
 }

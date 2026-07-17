@@ -50,6 +50,13 @@ export class CoursesController {
     return this.svc.findAllForSuperAdmin(query);
   }
 
+  // Flat picker source for the admin Enrollments "Individual Course" dropdown.
+  @Get('admin/list')
+  @Roles(Role.SUPER_ADMIN)
+  findAllFlat(@Query() query: CoursesQueryDto) {
+    return this.svc.findAllFlat(query);
+  }
+
   @Get()
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.USER, Role.STUDENT)
   findBrowsable(@Request() req: AuthReq) {

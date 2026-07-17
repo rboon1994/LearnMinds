@@ -22,6 +22,12 @@ describe('CoursesService tenant scoping', () => {
     studentId: null,
     role: Role.USER,
   };
+  const student = {
+    userId: 'student-user-1',
+    tenantId: null,
+    studentId: 'student-1',
+    role: Role.STUDENT,
+  };
 
   function buildService() {
     const prisma = {
@@ -81,6 +87,20 @@ describe('CoursesService tenant scoping', () => {
     service.findBrowsable(superAdmin);
     const args = prisma.course.findMany.mock.calls[0][0];
     expect(args.where).toEqual({});
+  });
+
+  // A directly-enrolled standalone course must be visible to a Student independent of whether
+  // that course's series (if any) is separately enrolled — the OR-branch added alongside
+  // course-level enrollment.
+  it('findBrowsable makes a directly-enrolled course visible to a Student via either the series or a direct enrollment', () => {
+    const { service, prisma } = buildService();
+    service.findBrowsable(student);
+    const args = prisma.course.findMany.mock.calls[0][0];
+    expect(args.where.status).toBe(ContentStatus.PUBLISHED);
+    expect(args.where.OR).toHaveLength(2);
+    const [seriesBranch, courseBranch] = args.where.OR;
+    expect(seriesBranch.series.enrollments.some.studentId).toBe('student-1');
+    expect(courseBranch.enrollments.some.studentId).toBe('student-1');
   });
 
   it('create assigns the admin actor tenantId to the course', async () => {

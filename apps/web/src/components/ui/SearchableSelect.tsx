@@ -15,6 +15,7 @@ type BaseProps = {
   helperText?: string;
   id: string;
   label?: string;
+  onQueryChange?: (query: string) => void;
   options: SelectOption[];
   placeholder?: string;
   required?: boolean;
@@ -35,7 +36,7 @@ type MultiSelectProps = BaseProps & {
 type SearchableSelectProps = SingleSelectProps | MultiSelectProps;
 
 export function SearchableSelect(props: SearchableSelectProps) {
-  const { className = '', error, helperText, id, label, options, placeholder = 'Search...', required } = props;
+  const { className = '', error, helperText, id, label, onQueryChange, options, placeholder = 'Search...', required } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -137,6 +138,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
             setQuery(event.target.value);
             setActiveIndex(0);
             setIsOpen(true);
+            onQueryChange?.(event.target.value);
           }}
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}

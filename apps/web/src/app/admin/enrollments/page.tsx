@@ -15,23 +15,45 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
+import { formatDateRange } from '@/lib/duration';
 
 type Enrollment = {
   id: string;
   expiresAt: string | null;
   student: { user: { fullName: string; email: string } | null } | null;
   tenant: { id: string; name: string } | null;
-  series: { id: string; name: string };
+  series: { id: string; name: string } | null;
+  course: { id: string; title: string; startDate: string | null; endDate: string | null } | null;
 };
+
+type ContentType = 'SERIES' | 'COURSE';
 
 function authHeaders() {
   const token = localStorage.getItem('token');
   return { Authorization: `Bearer ${token}` };
 }
 
-function validateEnrollmentForm(assignId: string, assignSeriesId: string) {
+// Course titles can repeat across instances (re-run cohorts) — the date range is what
+// disambiguates them, same formatting as the Learn page. Omitted entirely (not just blank) when
+// there's no date range, since formatDateRange returns null for an undated course.
+function courseLabel(title: string, startDate: string | null, endDate: string | null) {
+  const range = formatDateRange(startDate, endDate);
+  return range ? `${title} (${range})` : title;
+}
+
+function validateEnrollmentForm(
+  assignId: string,
+  contentType: ContentType,
+  seriesId: string,
+  courseId: string,
+) {
   if (!assignId) return { error: 'Please select a student or tenant', field: 'assignId' };
-  if (!assignSeriesId) return { error: 'Please select a course series', field: 'assignSeriesId' };
+  if (contentType === 'SERIES' && !seriesId) {
+    return { error: 'Please select a course series', field: 'assignSeriesId' };
+  }
+  if (contentType === 'COURSE' && !courseId) {
+    return { error: 'Please select a course', field: 'assignCourseId' };
+  }
   return null;
 }
 
@@ -48,17 +70,23 @@ export default function AdminEnrollmentsPage() {
   const [students, setStudents] = useState<{ value: string; label: string }[]>([]);
   const [tenants, setTenants] = useState<{ value: string; label: string }[]>([]);
   const [seriesOptions, setSeriesOptions] = useState<{ value: string; label: string }[]>([]);
+  const [courseOptions, setCourseOptions] = useState<{ value: string; label: string }[]>([]);
+  const [courseSearch, setCourseSearch] = useState('');
+  const [debouncedCourseSearch, setDebouncedCourseSearch] = useState('');
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [assignType, setAssignType] = useState<'STUDENT' | 'TENANT'>('STUDENT');
   const [assignId, setAssignId] = useState('');
+  const [assignContentType, setAssignContentType] = useState<ContentType>('SERIES');
   const [assignSeriesId, setAssignSeriesId] = useState('');
+  const [assignCourseId, setAssignCourseId] = useState('');
   const [assignExpiresAt, setAssignExpiresAt] = useState('');
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
   const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | null>(null);
   const [editSeriesId, setEditSeriesId] = useState('');
+  const [editCourseId, setEditCourseId] = useState('');
   const [editExpiresAt, setEditExpiresAt] = useState('');
   const [editError, setEditError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -80,6 +108,11 @@ export default function AdminEnrollmentsPage() {
     const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => clearTimeout(handle);
   }, [search]);
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedCourseSearch(courseSearch.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [courseSearch]);
 
   useEffect(() => {
     if (user && user.role !== 'SUPER_ADMIN') {
@@ -113,6 +146,20 @@ export default function AdminEnrollmentsPage() {
       .catch(() => {});
   }, [user]);
 
+  // Debounced server-side search — the course catalog can grow large over years of content, so
+  // this re-queries GET /courses/admin/list as the admin types rather than prefetching everything.
+  useEffect(() => {
+    if (!user || user.role !== 'SUPER_ADMIN') return;
+    const params = new URLSearchParams({ page: '1', pageSize: '20' });
+    if (debouncedCourseSearch) params.set('search', debouncedCourseSearch);
+    fetch(`${apiUrl}/courses/admin/list?${params.toString()}`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((res: { data: { id: string; title: string; startDate: string | null; endDate: string | null }[] }) =>
+        setCourseOptions(res.data.map((c) => ({ value: c.id, label: courseLabel(c.title, c.startDate, c.endDate) }))),
+      )
+      .catch(() => {});
+  }, [user, debouncedCourseSearch]);
+
   const columns: AdminTableColumn<Enrollment>[] = [
     {
       header: 'Student / Tenant',
@@ -131,7 +178,23 @@ export default function AdminEnrollmentsPage() {
         </span>
       ),
     },
-    { header: 'Course Series', render: (enrollment) => enrollment.series.name },
+    {
+      header: 'Course / Series',
+      render: (enrollment) => (
+        <span>
+          {enrollment.series
+            ? enrollment.series.name
+            : courseLabel(enrollment.course!.title, enrollment.course!.startDate, enrollment.course!.endDate)}
+          <span
+            className={`ml-2 rounded-full px-2 py-0.5 text-xs font-normal ${
+              enrollment.series ? 'bg-indigo-50 text-indigo-700' : 'bg-amber-50 text-amber-700'
+            }`}
+          >
+            {enrollment.series ? 'Series' : 'Course'}
+          </span>
+        </span>
+      ),
+    },
     {
       header: 'Expires At',
       render: (enrollment) => (enrollment.expiresAt ? new Date(enrollment.expiresAt).toLocaleDateString() : '—'),
@@ -144,14 +207,16 @@ export default function AdminEnrollmentsPage() {
     setIsCreateOpen(false);
     setAssignType('STUDENT');
     setAssignId('');
+    setAssignContentType('SERIES');
     setAssignSeriesId('');
+    setAssignCourseId('');
     setAssignExpiresAt('');
     setCreateError('');
   };
 
   const createEnrollment = async (e: { preventDefault(): void }) => {
     e.preventDefault();
-    const validation = validateEnrollmentForm(assignId, assignSeriesId);
+    const validation = validateEnrollmentForm(assignId, assignContentType, assignSeriesId, assignCourseId);
     if (validation) {
       setCreateError(validation.error);
       return;
@@ -164,7 +229,8 @@ export default function AdminEnrollmentsPage() {
       body: JSON.stringify({
         studentId: assignType === 'STUDENT' ? assignId : undefined,
         tenantId: assignType === 'TENANT' ? assignId : undefined,
-        seriesId: assignSeriesId,
+        seriesId: assignContentType === 'SERIES' ? assignSeriesId : undefined,
+        courseId: assignContentType === 'COURSE' ? assignCourseId : undefined,
         expiresAt: assignExpiresAt || undefined,
       }),
     });
@@ -180,7 +246,18 @@ export default function AdminEnrollmentsPage() {
 
   const openEditDialog = (enrollment: Enrollment) => {
     setEditingEnrollment(enrollment);
-    setEditSeriesId(enrollment.series.id);
+    setEditSeriesId(enrollment.series?.id ?? '');
+    setEditCourseId(enrollment.course?.id ?? '');
+    // Seed the picker so the currently-assigned course shows its label immediately, before any
+    // debounced search re-fetches and potentially narrows courseOptions away from it.
+    const course = enrollment.course;
+    if (course) {
+      setCourseOptions((prev) =>
+        prev.some((o) => o.value === course.id)
+          ? prev
+          : [{ value: course.id, label: courseLabel(course.title, course.startDate, course.endDate) }, ...prev],
+      );
+    }
     setEditExpiresAt(enrollment.expiresAt ? enrollment.expiresAt.slice(0, 10) : '');
     setEditError('');
   };
@@ -193,8 +270,13 @@ export default function AdminEnrollmentsPage() {
   const saveEnrollment = async (e: { preventDefault(): void }) => {
     e.preventDefault();
     if (!editingEnrollment) return;
-    if (!editSeriesId) {
+    const isSeries = editingEnrollment.series !== null;
+    if (isSeries && !editSeriesId) {
       setEditError('Please select a course series');
+      return;
+    }
+    if (!isSeries && !editCourseId) {
+      setEditError('Please select a course');
       return;
     }
     setIsSaving(true);
@@ -203,13 +285,14 @@ export default function AdminEnrollmentsPage() {
       method: 'PATCH',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        seriesId: editSeriesId,
+        seriesId: isSeries ? editSeriesId : undefined,
+        courseId: isSeries ? undefined : editCourseId,
         expiresAt: editExpiresAt || undefined,
       }),
     });
     setIsSaving(false);
     if (!res.ok) {
-      setEditError(res.status === 409 ? 'Already enrolled in this series' : 'Failed to save enrollment');
+      setEditError(res.status === 409 ? 'Already enrolled' : 'Failed to save enrollment');
       return;
     }
     toast.saved();
@@ -261,7 +344,7 @@ export default function AdminEnrollmentsPage() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Search by student, tenant, or course series..."
+              placeholder="Search by student, tenant, course series, or course..."
               value={search}
             />
           </div>
@@ -291,14 +374,40 @@ export default function AdminEnrollmentsPage() {
             required
             value={assignId}
           />
-          <SearchableSelect
-            id="assignSeriesId"
-            label="Course Series"
-            onChange={setAssignSeriesId}
-            options={seriesOptions}
-            required
-            value={assignSeriesId}
+          <RadioGroup
+            label="Enroll in"
+            name="assignContentType"
+            onChange={(value) => {
+              setAssignContentType(value as ContentType);
+              setAssignSeriesId('');
+              setAssignCourseId('');
+            }}
+            options={[
+              { label: 'Course Series', value: 'SERIES' },
+              { label: 'Individual Course', value: 'COURSE' },
+            ]}
+            value={assignContentType}
           />
+          {assignContentType === 'SERIES' ? (
+            <SearchableSelect
+              id="assignSeriesId"
+              label="Course Series"
+              onChange={setAssignSeriesId}
+              options={seriesOptions}
+              required
+              value={assignSeriesId}
+            />
+          ) : (
+            <SearchableSelect
+              id="assignCourseId"
+              label="Individual Course"
+              onChange={setAssignCourseId}
+              onQueryChange={setCourseSearch}
+              options={courseOptions}
+              required
+              value={assignCourseId}
+            />
+          )}
           <Input
             id="assignExpiresAt"
             label="Expires At"
@@ -329,14 +438,26 @@ export default function AdminEnrollmentsPage() {
                 : (editingEnrollment?.tenant?.name ?? '')
             }
           />
-          <SearchableSelect
-            id="editSeriesId"
-            label="Course Series"
-            onChange={setEditSeriesId}
-            options={seriesOptions}
-            required
-            value={editSeriesId}
-          />
+          {editingEnrollment?.series ? (
+            <SearchableSelect
+              id="editSeriesId"
+              label="Course Series"
+              onChange={setEditSeriesId}
+              options={seriesOptions}
+              required
+              value={editSeriesId}
+            />
+          ) : (
+            <SearchableSelect
+              id="editCourseId"
+              label="Individual Course"
+              onChange={setEditCourseId}
+              onQueryChange={setCourseSearch}
+              options={courseOptions}
+              required
+              value={editCourseId}
+            />
+          )}
           <Input
             id="editExpiresAt"
             label="Expires At (optional)"

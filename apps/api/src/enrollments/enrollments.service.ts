@@ -16,14 +16,15 @@ const enrollmentInclude = {
   },
   tenant: { select: { id: true, name: true } },
   series: { select: { id: true, name: true } },
+  course: { select: { id: true, title: true, startDate: true, endDate: true } },
 } satisfies Prisma.EnrollmentInclude;
 
 @Injectable()
 export class EnrollmentsService {
   constructor(private prisma: PrismaService) {}
 
-  // Search matches the student's name/email, the tenant's name, or the course series name —
-  // each via `contains`, joined with OR across the relations.
+  // Search matches the student's name/email, the tenant's name, the course series name, or the
+  // individual course title — each via `contains`, joined with OR across the relations.
   findAll(query: EnrollmentsQueryDto) {
     const search = query.search?.trim();
     const where: Prisma.EnrollmentWhereInput = search
@@ -41,6 +42,7 @@ export class EnrollmentsService {
             },
             { tenant: { name: { contains: search, mode: 'insensitive' } } },
             { series: { name: { contains: search, mode: 'insensitive' } } },
+            { course: { title: { contains: search, mode: 'insensitive' } } },
           ],
         }
       : {};
@@ -54,18 +56,27 @@ export class EnrollmentsService {
     );
   }
 
-  // Letting the [seriesId, studentId]/[seriesId, tenantId] unique constraints do the dedup
-  // check (via the P2002 catch below) avoids a check-then-insert race.
+  // Letting the [seriesId, studentId]/[seriesId, tenantId]/[courseId, studentId]/
+  // [courseId, tenantId] unique constraints do the dedup check (via the P2002 catch below)
+  // avoids a check-then-insert race. The XOR checks below are also backstopped at the DB level
+  // by chk_enrollment_assignee/chk_enrollment_target (see the migration) — this is defense in
+  // depth, not the only guard.
   async create(dto: CreateEnrollmentDto, enrolledById: string) {
     if (Boolean(dto.studentId) === Boolean(dto.tenantId)) {
       throw new BadRequestException(
         'Exactly one of studentId or tenantId is required',
       );
     }
+    if (Boolean(dto.seriesId) === Boolean(dto.courseId)) {
+      throw new BadRequestException(
+        'Exactly one of seriesId or courseId is required',
+      );
+    }
     try {
       return await this.prisma.enrollment.create({
         data: {
           seriesId: dto.seriesId,
+          courseId: dto.courseId,
           studentId: dto.studentId,
           tenantId: dto.tenantId,
           enrolledById,
@@ -83,12 +94,31 @@ export class EnrollmentsService {
     }
   }
 
+  // The Edit dialog UI locks an enrollment's type (Series vs Course) at creation, but that's a
+  // client affordance, not enforcement — reject any attempt to flip it via a direct API call.
+  // `!= null` (not `!== undefined`) so an explicitly-sent `null` for the inactive field (some
+  // form libraries send both fields, one as null) isn't mistaken for "trying to switch".
   async update(id: string, dto: UpdateEnrollmentDto) {
+    const existing = await this.prisma.enrollment.findUniqueOrThrow({
+      where: { id },
+      select: { seriesId: true, courseId: true },
+    });
+    if (existing.seriesId !== null && dto.courseId != null) {
+      throw new BadRequestException(
+        'Cannot change a series enrollment into a course enrollment',
+      );
+    }
+    if (existing.courseId !== null && dto.seriesId != null) {
+      throw new BadRequestException(
+        'Cannot change a course enrollment into a series enrollment',
+      );
+    }
     try {
       return await this.prisma.enrollment.update({
         where: { id },
         data: {
           seriesId: dto.seriesId,
+          courseId: dto.courseId,
           expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
         },
       });
