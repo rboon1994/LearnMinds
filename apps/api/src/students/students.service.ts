@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { Prisma, Role } from '@prisma/client';
+import { Prisma, Role, Status } from '@prisma/client';
 import { paginate } from '../common/paginate';
 import { PrismaService } from '../prisma/prisma.service';
 import { TEMP_PASSWORD } from '../common/temp-password';
@@ -21,22 +21,10 @@ const selectFields = {
   fullName: true,
   phoneCountryCode: true,
   phoneNo: true,
-  mustChangePassword: true,
+  status: true,
   lastSignInAt: true,
   createdAt: true,
 } as const;
-
-// The admin-facing "status" is derived from mustChangePassword, not the account status
-// enum — a Student is Inactive until they set their own password, Active from then on.
-function toStudentDto<T extends { mustChangePassword: boolean }>({
-  mustChangePassword,
-  ...row
-}: T) {
-  return {
-    ...row,
-    status: mustChangePassword ? 'INACTIVE' : ('ACTIVE' as const),
-  };
-}
 
 @Injectable()
 export class StudentsService {
@@ -66,7 +54,7 @@ export class StudentsService {
           }
         : {}),
     };
-    const result = await paginate<
+    return paginate<
       Prisma.UserGetPayload<{ select: typeof selectFields }>,
       Prisma.UserWhereInput
     >(
@@ -74,26 +62,23 @@ export class StudentsService {
       { where, select: selectFields, orderBy: { createdAt: 'desc' } },
       { page: query.page, pageSize: query.pageSize },
     );
-    return { ...result, data: result.data.map(toStudentDto) };
   }
 
   async findOne(id: string) {
-    const row = await this.prisma.user.findFirstOrThrow({
+    return this.prisma.user.findFirstOrThrow({
       where: { id, studentId: { not: null } },
       select: selectFields,
     });
-    return toStudentDto(row);
   }
 
   async update(id: string, dto: UpdateStudentDto) {
     await this.findOne(id);
     try {
-      const row = await this.prisma.user.update({
+      return await this.prisma.user.update({
         where: { id },
         data: dto,
         select: selectFields,
       });
-      return toStudentDto(row);
     } catch (err) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -119,16 +104,16 @@ export class StudentsService {
     ]);
   }
 
-  // Back to the fixed bulk-register temp password, with mustChangePassword forcing them off it again.
+  // Back to the fixed bulk-register temp password; status returns to INACTIVE until the
+  // Student changes it again via /auth/change-password.
   async resetPassword(id: string) {
     await this.findOne(id);
     const hashed = await bcrypt.hash(TEMP_PASSWORD, 10);
-    const row = await this.prisma.user.update({
+    return this.prisma.user.update({
       where: { id },
-      data: { password: hashed, mustChangePassword: true },
+      data: { password: hashed, mustChangePassword: true, status: Status.INACTIVE },
       select: selectFields,
     });
-    return toStudentDto(row);
   }
 
   // Sequential (not Promise.all) so a duplicate email appearing twice within the same batch is
@@ -162,6 +147,7 @@ export class StudentsService {
             role: Role.STUDENT,
             studentId: student.id,
             mustChangePassword: true,
+            status: Status.INACTIVE,
           },
         });
       });
