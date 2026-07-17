@@ -81,7 +81,7 @@ export class UsersService {
           phoneCountryCode: dto.phoneCountryCode,
           phoneNo: dto.phoneNo,
           role,
-          tenantId,
+          tenantId: role === Role.SUPER_ADMIN ? null : tenantId,
           departmentId: role === Role.USER ? dto.departmentId : undefined,
           mustChangePassword: true,
         },
