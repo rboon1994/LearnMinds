@@ -14,6 +14,8 @@ import { CourseSeriesModule } from './course-series/course-series.module';
 import { EnrollmentsModule } from './enrollments/enrollments.module';
 import { SpeakersModule } from './speakers/speakers.module';
 import { UsersModule } from './users/users.module';
+import { AiAgentModelsModule } from './ai-agent-models/ai-agent-models.module';
+import { AiAgentsModule } from './ai-agents/ai-agents.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { UsersModule } from './users/users.module';
     CourseSeriesModule,
     EnrollmentsModule,
     SpeakersModule,
+    AiAgentModelsModule,
+    AiAgentsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })

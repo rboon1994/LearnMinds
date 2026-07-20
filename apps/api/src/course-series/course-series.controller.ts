@@ -6,12 +6,14 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CourseSeriesService } from './course-series.service';
+import { CourseSeriesQueryDto } from './dto/course-series-query.dto';
 import { CreateCourseSeriesDto } from './dto/create-course-series.dto';
 
 // Super-Admin-only, per explicit decision — Course Series grouping/enrollment is a
@@ -23,8 +25,8 @@ export class CourseSeriesController {
   constructor(private svc: CourseSeriesService) {}
 
   @Get()
-  findAll() {
-    return this.svc.findAll();
+  findAll(@Query() query: CourseSeriesQueryDto) {
+    return this.svc.findAll(query);
   }
 
   @Post()

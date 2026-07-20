@@ -142,6 +142,15 @@ async function main() {
       packages: [],
       status: 'ACTIVE',
     },
+    {
+      name: 'AI Agent Management',
+      key: 'ai-agent-management',
+      description: 'Create and manage AI agents',
+      order: 10,
+      isSystem: true,
+      packages: [],
+      status: 'ACTIVE',
+    },
   ];
   for (const feature of adminFeatures) {
     await prisma.adminFeature.upsert({

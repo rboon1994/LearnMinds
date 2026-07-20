@@ -138,7 +138,7 @@ export default function AdminEnrollmentsPage() {
         setTenants(data.map((t) => ({ value: t.id, label: t.name }))),
       )
       .catch(() => {});
-    fetch(`${apiUrl}/course-series`, { headers: authHeaders() })
+    fetch(`${apiUrl}/course-series?hasCourses=true`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((data: { id: string; name: string }[]) =>
         setSeriesOptions(data.map((s) => ({ value: s.id, label: s.name }))),

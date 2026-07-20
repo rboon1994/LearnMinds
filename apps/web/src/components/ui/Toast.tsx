@@ -5,9 +5,16 @@ import type { ReactNode } from 'react';
 
 import { Alert } from './Alert';
 import { Icon } from './Icon';
+import type { IconName } from './Icon';
 
-type ToastType = 'success' | 'error';
+type ToastType = 'success' | 'error' | 'warning';
 type ToastItem = { id: number; type: ToastType; message: string };
+
+const TOAST_ICON: Record<ToastType, IconName> = {
+  success: 'check-circle',
+  error: 'error',
+  warning: 'warning',
+};
 
 type ToastContextValue = {
   saved: () => void;
@@ -17,6 +24,10 @@ type ToastContextValue = {
   deleteFailed: () => void;
   accountInactive: () => void;
   duplicateName: () => void;
+  // Unlike the fixed canned messages above, this carries the backend's own message text —
+  // for business-rule guardrails (e.g. "can't deactivate the default model") that are blocked
+  // by design, not a hard failure, so they read as a warning rather than an error.
+  warning: (message: string) => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -44,6 +55,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     deleteFailed: () => push('error', 'Failed to Delete'),
     accountInactive: () => push('error', 'Account is not active'),
     duplicateName: () => push('error', 'A series with this name already exists'),
+    warning: (message: string) => push('warning', message),
   };
 
   return (
@@ -51,11 +63,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="fixed bottom-4 right-4 z-100 flex w-full max-w-sm flex-col gap-2">
         {toasts.map((toast) => (
-          <Alert
-            key={toast.id}
-            type={toast.type}
-            icon={<Icon name={toast.type === 'success' ? 'check-circle' : 'error'} className="h-4 w-4" />}
-          >
+          <Alert key={toast.id} type={toast.type} icon={<Icon name={TOAST_ICON[toast.type]} className="h-4 w-4" />}>
             {toast.message}
           </Alert>
         ))}

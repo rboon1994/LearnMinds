@@ -1,13 +1,18 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateCourseSeriesDto } from './dto/create-course-series.dto';
+import type { CourseSeriesQueryDto } from './dto/course-series-query.dto';
 
 @Injectable()
 export class CourseSeriesService {
   constructor(private prisma: PrismaService) {}
 
-  findAll() {
+  // `hasCourses` is opt-in — the Course-edit "assign to series" picker and the Manage Series
+  // dialog both need to see empty series too (to assign a series' first course, or to manage a
+  // freshly created one), so filtering to non-empty series only happens when explicitly asked.
+  findAll(query: CourseSeriesQueryDto = {}) {
     return this.prisma.courseSeries.findMany({
+      where: query.hasCourses ? { courses: { some: {} } } : undefined,
       include: { _count: { select: { courses: true } } },
       orderBy: { name: 'asc' },
     });

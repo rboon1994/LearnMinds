@@ -10,6 +10,9 @@ type DialogProps = {
   onClose: () => void;
   size?: 'md' | 'xl';
   title?: string;
+  // Optional content rendered next to the title (e.g. a status toggle) — kept optional so
+  // every other existing Dialog usage is unaffected.
+  titleExtra?: ReactNode;
 };
 
 const DIALOG_SIZE_CLASSES: Record<NonNullable<DialogProps['size']>, string> = {
@@ -17,7 +20,7 @@ const DIALOG_SIZE_CLASSES: Record<NonNullable<DialogProps['size']>, string> = {
   xl: 'max-w-3xl',
 };
 
-export function Dialog({ children, isOpen, onClose, size = 'md', title }: DialogProps) {
+export function Dialog({ children, isOpen, onClose, size = 'md', title, titleExtra }: DialogProps) {
   if (!isOpen) return null;
 
   return (
@@ -27,7 +30,10 @@ export function Dialog({ children, isOpen, onClose, size = 'md', title }: Dialog
         className={`relative flex max-h-[90vh] w-full ${DIALOG_SIZE_CLASSES[size]} flex-col rounded-xl border border-slate-200 bg-white p-6 shadow-xl`}
       >
         <div className="mb-4 flex shrink-0 items-center justify-between">
-          {title && <h3 className="text-lg font-semibold text-slate-900">{title}</h3>}
+          <div className="flex items-center gap-2.5">
+            {title && <h3 className="text-lg font-semibold text-slate-900">{title}</h3>}
+            {titleExtra}
+          </div>
           <button
             className="ml-auto text-slate-400 hover:text-slate-700"
             onClick={onClose}
