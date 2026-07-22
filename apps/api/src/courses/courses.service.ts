@@ -248,12 +248,24 @@ export class CoursesService {
       // since Prisma silently ignores undefined and would match any enrollment.
       if (!actor.studentId) return { id: { in: [] as string[] } };
       const now = new Date();
-      const notExpired = { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
+      const notExpired = {
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      };
       return {
         status: ContentStatus.PUBLISHED,
         OR: [
-          { series: { enrollments: { some: { studentId: actor.studentId, ...notExpired } } } },
-          { enrollments: { some: { studentId: actor.studentId, ...notExpired } } },
+          {
+            series: {
+              enrollments: {
+                some: { studentId: actor.studentId, ...notExpired },
+              },
+            },
+          },
+          {
+            enrollments: {
+              some: { studentId: actor.studentId, ...notExpired },
+            },
+          },
         ],
       };
     }

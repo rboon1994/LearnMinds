@@ -47,6 +47,7 @@ type AiAgent = {
   model: { id: string; displayName: string };
   series: { id: string; name: string } | null;
   creator: { id: string; name: string } | null;
+  knowledgeBase: { id: string; name: string } | null;
 };
 
 const STATUS_OPTIONS = [
@@ -72,6 +73,7 @@ const emptyAgentForm = {
   modelId: '',
   seriesId: '',
   creatorId: '',
+  knowledgeBaseId: '',
 };
 
 export default function AdminAiAgentsPage() {
@@ -97,6 +99,8 @@ export default function AdminAiAgentsPage() {
 
   // Course Series options (shown in full, not filtered by enrollment)
   const [seriesOptions, setSeriesOptions] = useState<SelectOption[]>([]);
+  // Knowledge Base options — reusable across agents, so shown in full like Course Series.
+  const [knowledgeBaseOptions, setKnowledgeBaseOptions] = useState<SelectOption[]>([]);
   // Creator (Speaker) options, server-searched
   const [creatorOptions, setCreatorOptions] = useState<SelectOption[]>([]);
   // Model options for the Create/Edit Agent dropdown (ACTIVE only, + the agent's own model on edit)
@@ -144,6 +148,15 @@ export default function AdminAiAgentsPage() {
       .catch(() => {});
   };
 
+  const loadKnowledgeBaseOptions = () => {
+    fetch(`${apiUrl}/knowledge-bases`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((res: { id: string; name: string }[]) =>
+        setKnowledgeBaseOptions(res.map((kb) => ({ value: kb.id, label: kb.name }))),
+      )
+      .catch(() => {});
+  };
+
   const searchCreators = (query: string) => {
     fetch(`${apiUrl}/speakers?search=${encodeURIComponent(query)}&pageSize=20`, { headers: authHeaders() })
       .then((r) => r.json())
@@ -179,6 +192,7 @@ export default function AdminAiAgentsPage() {
     }
     fetchAgents();
     loadSeriesOptions();
+    loadKnowledgeBaseOptions();
     searchCreators('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, router, page, debouncedSearch, statusFilter]);
@@ -386,6 +400,7 @@ export default function AdminAiAgentsPage() {
         modelId: createForm.modelId,
         seriesId: createForm.seriesId || null,
         creatorId: createForm.creatorId || null,
+        knowledgeBaseId: createForm.knowledgeBaseId || null,
       }),
     });
     setIsCreating(false);
@@ -411,6 +426,7 @@ export default function AdminAiAgentsPage() {
       modelId: agent.model.id,
       seriesId: agent.series?.id ?? '',
       creatorId: agent.creator?.id ?? '',
+      knowledgeBaseId: agent.knowledgeBase?.id ?? '',
     });
     setEditError('');
     loadAgentModelOptions(agent.model.id);
@@ -449,6 +465,7 @@ export default function AdminAiAgentsPage() {
         modelId: editForm.modelId,
         seriesId: editForm.seriesId || null,
         creatorId: editForm.creatorId || null,
+        knowledgeBaseId: editForm.knowledgeBaseId || null,
       }),
     });
     setIsSaving(false);
@@ -548,6 +565,14 @@ export default function AdminAiAgentsPage() {
         options={creatorOptions}
         placeholder="No creator"
         value={form.creatorId}
+      />
+      <SearchableSelect
+        id={`${idPrefix}KnowledgeBaseId`}
+        label="Knowledge Base"
+        onChange={(value) => setForm((f) => ({ ...f, knowledgeBaseId: value }))}
+        options={knowledgeBaseOptions}
+        placeholder="No knowledge base"
+        value={form.knowledgeBaseId}
       />
     </>
   );

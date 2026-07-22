@@ -11,12 +11,13 @@ const FEATURE_META: Record<string, { href: string; icon: IconName; color: string
   'department-management': { href: '/admin/departments', icon: 'building', color: 'bg-purple-50', subtitle: 'Organize departments' },
   'navigation-management': { href: '/admin/nav-items', icon: 'list', color: 'bg-indigo-50', subtitle: 'Configure navigation' },
   'admin-feature-management': { href: '/admin/admin-features', icon: 'cog', color: 'bg-green-50', subtitle: 'Manage admin features' },
-  billing: { href: '/admin/billing', icon: 'credit-card', color: 'bg-orange-50', subtitle: 'Payments and subscriptions' },
+  'billing': { href: '/admin/billing', icon: 'credit-card', color: 'bg-orange-50', subtitle: 'Payments and subscriptions' },
   'course-management': { href: '/admin/courses', icon: 'video', color: 'bg-pink-50', subtitle: 'Manage courses and lessons' },
   'student-management': { href: '/admin/students', icon: 'user', color: 'bg-sky-50', subtitle: 'Bulk register student accounts' },
   'enrollment-management': { href: '/admin/enrollments', icon: 'check-circle', color: 'bg-emerald-50', subtitle: 'Grant course series access' },
   'speaker-management': { href: '/admin/speakers', icon: 'user', color: 'bg-cyan-50', subtitle: 'Manage event speakers' },
   'ai-agent-management': { href: '/admin/ai-agents', icon: 'robot', color: 'bg-violet-50', subtitle: 'Manage AI agents' },
+  'knowledge-base-management': { href: '/admin/knowledge-base', icon: 'file', color: 'bg-teal-50', subtitle: 'Manage knowledge base documents' },
 };
 
 // Fallback for any AdminFeature without a matching route/icon above — keeps it

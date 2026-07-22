@@ -127,7 +127,7 @@ export default function CourseDetailPage() {
                   bar against the video's own separately-composited decode layer underneath it —
                   taps land on nothing. Confirmed by removing it on-device. Trade-off: the video
                   now renders with square corners instead of matching the rounded-xl container. */}
-              <div className="relative aspect-15/9 lg:aspect-video bg-black rounded-xl mb-4">
+              <div className="relative aspect-[15/9] lg:aspect-video bg-black rounded-xl mb-4">
                 {activeLesson?.videoType === 'UPLOAD' && videoSrc && (
                   <VideoPlayer src={videoSrc.url} type={videoSrc.type || undefined} />
                 )}

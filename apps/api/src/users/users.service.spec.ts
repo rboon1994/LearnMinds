@@ -23,10 +23,16 @@ describe('UsersService', () => {
   it('findAll scopes the Tenant Users list to the given tenantId, ignoring anything else', async () => {
     const prisma = makePrismaMock();
     const svc = new UsersService(prisma as any);
-    await svc.findAll({ scope: UserScope.TENANT, page: 1, pageSize: 10 } as any, 'tenant-a');
+    await svc.findAll(
+      { scope: UserScope.TENANT, page: 1, pageSize: 10 },
+      'tenant-a',
+    );
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ role: Role.USER, tenantId: 'tenant-a' }),
+        where: expect.objectContaining({
+          role: Role.USER,
+          tenantId: 'tenant-a',
+        }),
       }),
     );
   });
@@ -34,10 +40,16 @@ describe('UsersService', () => {
   it('findAll scopes the Platform Admins list to tenantId: null regardless of the tenantId param', async () => {
     const prisma = makePrismaMock();
     const svc = new UsersService(prisma as any);
-    await svc.findAll({ scope: UserScope.PLATFORM, page: 1, pageSize: 10 } as any, 'tenant-a');
+    await svc.findAll(
+      { scope: UserScope.PLATFORM, page: 1, pageSize: 10 },
+      'tenant-a',
+    );
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ role: Role.SUPER_ADMIN, tenantId: null }),
+        where: expect.objectContaining({
+          role: Role.SUPER_ADMIN,
+          tenantId: null,
+        }),
       }),
     );
   });
@@ -47,7 +59,11 @@ describe('UsersService', () => {
     prisma.user.findFirstOrThrow.mockRejectedValue(new Error('not found'));
     const svc = new UsersService(prisma as any);
     await expect(
-      svc.update('user-1', { fullName: 'New Name' }, { role: Role.USER, tenantId: 'tenant-a' }),
+      svc.update(
+        'user-1',
+        { fullName: 'New Name' },
+        { role: Role.USER, tenantId: 'tenant-a' },
+      ),
     ).rejects.toThrow('not found');
     expect(prisma.user.findFirstOrThrow).toHaveBeenCalledWith({
       where: { id: 'user-1', role: Role.USER, tenantId: 'tenant-a' },
@@ -57,18 +73,25 @@ describe('UsersService', () => {
 
   it('delete for SUPER_ADMIN (scope=null) allows role=USER or role=SUPER_ADMIN, never STUDENT', async () => {
     const prisma = makePrismaMock();
-    prisma.user.findFirstOrThrow.mockResolvedValue({ id: 'user-1', tenantId: null });
+    prisma.user.findFirstOrThrow.mockResolvedValue({
+      id: 'user-1',
+      tenantId: null,
+    });
     const svc = new UsersService(prisma as any);
     await svc.delete('user-1', null);
     expect(prisma.user.findFirstOrThrow).toHaveBeenCalledWith({
       where: { id: 'user-1', role: { in: [Role.USER, Role.SUPER_ADMIN] } },
     });
-    expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: 'user-1' } });
+    expect(prisma.user.delete).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+    });
   });
 
   it('create rejects a departmentId that does not belong to the resolved tenant', async () => {
     const prisma = makePrismaMock();
-    prisma.department.findFirstOrThrow.mockRejectedValue(new Error('not found'));
+    prisma.department.findFirstOrThrow.mockRejectedValue(
+      new Error('not found'),
+    );
     const svc = new UsersService(prisma as any);
     await expect(
       svc.create(
@@ -104,7 +127,11 @@ describe('UsersService', () => {
     });
 
     const svc = new UsersService(prisma as any);
-    await svc.update('admin-1', { fullName: 'Updated Admin', departmentId: 'dept-x' }, null);
+    await svc.update(
+      'admin-1',
+      { fullName: 'Updated Admin', departmentId: 'dept-x' },
+      null,
+    );
 
     // Should NOT have called department validation
     expect(prisma.department.findFirstOrThrow).not.toHaveBeenCalled();
@@ -126,23 +153,39 @@ describe('UsersService', () => {
     prisma.user.create.mockResolvedValue({ id: 'user-1', status: 'INACTIVE' });
     const svc = new UsersService(prisma as any);
     await svc.create(
-      { scope: UserScope.PLATFORM, fullName: 'Jane', email: 'jane@example.com' } as any,
+      {
+        scope: UserScope.PLATFORM,
+        fullName: 'Jane',
+        email: 'jane@example.com',
+      },
       null,
     );
     expect(prisma.user.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'INACTIVE' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'INACTIVE' }),
+      }),
     );
   });
 
   it('resetPassword sets status back to INACTIVE', async () => {
     const prisma = makePrismaMock();
-    prisma.user.findFirstOrThrow.mockResolvedValue({ id: 'user-1', role: Role.USER, tenantId: 'tenant-a' });
+    prisma.user.findFirstOrThrow.mockResolvedValue({
+      id: 'user-1',
+      role: Role.USER,
+      tenantId: 'tenant-a',
+    });
     prisma.user.update.mockResolvedValue({ id: 'user-1', status: 'INACTIVE' });
     const svc = new UsersService(prisma as any);
-    await svc.resetPassword('user-1', { role: Role.USER, tenantId: 'tenant-a' });
+    await svc.resetPassword('user-1', {
+      role: Role.USER,
+      tenantId: 'tenant-a',
+    });
     expect(prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ mustChangePassword: true, status: 'INACTIVE' }),
+        data: expect.objectContaining({
+          mustChangePassword: true,
+          status: 'INACTIVE',
+        }),
       }),
     );
   });

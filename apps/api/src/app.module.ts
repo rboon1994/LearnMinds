@@ -16,6 +16,8 @@ import { SpeakersModule } from './speakers/speakers.module';
 import { UsersModule } from './users/users.module';
 import { AiAgentModelsModule } from './ai-agent-models/ai-agent-models.module';
 import { AiAgentsModule } from './ai-agents/ai-agents.module';
+import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
+import { AgentChatModule } from './agent-chat/agent-chat.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { AiAgentsModule } from './ai-agents/ai-agents.module';
     SpeakersModule,
     AiAgentModelsModule,
     AiAgentsModule,
+    KnowledgeBaseModule,
+    AgentChatModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })

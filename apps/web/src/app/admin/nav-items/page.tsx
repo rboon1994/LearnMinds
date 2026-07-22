@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AdminLayout } from '@/components/layout/AdminLayout';
+import { AdminTable } from '@/components/ui/AdminTable';
+import type { AdminTableColumn } from '@/components/ui/AdminTable';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
 
@@ -57,49 +60,54 @@ export default function NavItemsPage() {
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, isStudentVisible: next } : i)));
   };
 
+  const persistOrder = async (ordered: NavItem[]) => {
+    const token = localStorage.getItem('token');
+    await fetch(`${apiUrl}/nav-items/reorder`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ordered.map((i) => i.id) }),
+    });
+  };
+
   if (user?.role !== 'SUPER_ADMIN') return null;
 
+  const columns: AdminTableColumn<NavItem>[] = [
+    { header: 'Nav Item', render: (item) => item.name },
+    ...ALL_PACKAGES.map((pkg) => ({
+      header: pkg,
+      className: 'text-center',
+      render: (item: NavItem) => (
+        <input
+          type="checkbox"
+          checked={item.packages.includes(pkg)}
+          onChange={() => togglePackage(item, pkg)}
+          className="w-4 h-4 accent-indigo-600 cursor-pointer"
+        />
+      ),
+    })),
+    {
+      header: 'Student',
+      className: 'text-center',
+      render: (item) => (
+        <input
+          type="checkbox"
+          checked={item.isStudentVisible}
+          onChange={() => toggleStudentVisible(item)}
+          className="w-4 h-4 accent-indigo-600 cursor-pointer"
+        />
+      ),
+    },
+  ];
+
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold text-slate-900 mb-6">Nav Item Visibility</h1>
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-            <tr>
-              <th className="px-4 py-3 text-left">Nav Item</th>
-              {ALL_PACKAGES.map((pkg) => (
-                <th key={pkg} className="px-4 py-3 text-center">{pkg}</th>
-              ))}
-              <th className="px-4 py-3 text-center">Student</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {items.map((item) => (
-              <tr key={item.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 font-medium text-slate-900">{item.name}</td>
-                {ALL_PACKAGES.map((pkg) => (
-                  <td key={pkg} className="px-4 py-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={item.packages.includes(pkg)}
-                      onChange={() => togglePackage(item, pkg)}
-                      className="w-4 h-4 accent-indigo-600 cursor-pointer"
-                    />
-                  </td>
-                ))}
-                <td className="px-4 py-3 text-center">
-                  <input
-                    type="checkbox"
-                    checked={item.isStudentVisible}
-                    onChange={() => toggleStudentVisible(item)}
-                    className="w-4 h-4 accent-indigo-600 cursor-pointer"
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <AdminLayout title="Nav Item Visibility" backHref="/admin">
+      <AdminTable
+        columns={columns}
+        data={items}
+        keyField="id"
+        emptyMessage="No nav items yet."
+        reorder={{ onReorder: setItems, onReorderEnd: persistOrder }}
+      />
+    </AdminLayout>
   );
 }

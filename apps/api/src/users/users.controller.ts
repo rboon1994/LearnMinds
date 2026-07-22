@@ -36,15 +36,25 @@ export class UsersController {
 
   @Get()
   findAll(@Query() query: UsersQueryDto, @Request() req: AuthReq) {
-    if (query.scope === UserScope.PLATFORM && req.user.role !== Role.SUPER_ADMIN) {
+    if (
+      query.scope === UserScope.PLATFORM &&
+      req.user.role !== Role.SUPER_ADMIN
+    ) {
       throw new ForbiddenException();
     }
     if (query.scope === UserScope.TENANT && req.user.role === Role.ADMIN) {
-      return this.svc.findAll(query, req.user.tenantId as string);
+      return this.svc.findAll(query, req.user.tenantId);
     }
-    const tenantId = query.scope === UserScope.TENANT ? (query.tenantId ?? null) : null;
+    const tenantId =
+      query.scope === UserScope.TENANT ? (query.tenantId ?? null) : null;
     if (query.scope === UserScope.TENANT && !tenantId) {
-      return { data: [], total: 0, page: query.page, pageSize: query.pageSize, totalPages: 1 };
+      return {
+        data: [],
+        total: 0,
+        page: query.page,
+        pageSize: query.pageSize,
+        totalPages: 1,
+      };
     }
     return this.svc.findAll(query, tenantId);
   }
@@ -52,7 +62,10 @@ export class UsersController {
   @Post()
   @RequireFeature('user-management')
   create(@Body() dto: CreateUserDto, @Request() req: AuthReq) {
-    if (dto.scope === UserScope.PLATFORM && req.user.role !== Role.SUPER_ADMIN) {
+    if (
+      dto.scope === UserScope.PLATFORM &&
+      req.user.role !== Role.SUPER_ADMIN
+    ) {
       throw new ForbiddenException();
     }
     const tenantId =
@@ -69,7 +82,11 @@ export class UsersController {
 
   @Patch(':id')
   @RequireFeature('user-management')
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: AuthReq) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+    @Request() req: AuthReq,
+  ) {
     return this.svc.update(id, dto, this.scopeFilter(req));
   }
 

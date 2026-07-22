@@ -10,7 +10,7 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen bg-white">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 will-change-transform">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-2">
@@ -31,7 +31,7 @@ export default function Home() {
               </div>
               {/* Mobile Menu Button */}
               <button
-                className="md:hidden p-2"
+                className="md:hidden p-2 min-h-[48px] min-w-[48px] flex items-center justify-center touch-manipulation"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               >
                 <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -63,7 +63,7 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative overflow-hidden py-12">
         {/* Background decoration */}
-        <div className="absolute inset-0 -z-10">
+        <div className="absolute inset-0 -z-10 pointer-events-none">
           <div className="absolute top-20 right-0 w-96 h-96 bg-gradient-to-br from-green-200/30 to-blue-200/30 rounded-full blur-3xl" />
           <div className="absolute bottom-0 left-0 w-80 h-80 bg-gradient-to-tr from-blue-200/30 to-green-200/30 rounded-full blur-3xl" />
         </div>

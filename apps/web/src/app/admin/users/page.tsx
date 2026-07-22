@@ -98,12 +98,14 @@ export default function AdminUsersPage() {
   // request goes out as scope=platform, which the backend correctly 403s for a non-SUPER_ADMIN.
   const effectiveTab: Tab = isSuperAdmin ? activeTab : 'tenant';
 
+  // Derived rather than cleared via setState-in-effect: avoids showing stale
+  // previous-scope data without a synchronous setState in the load effect.
+  const visibleUsers = effectiveTab === 'tenant' && !scopeTenantId ? [] : users;
+  const visibleTotal = effectiveTab === 'tenant' && !scopeTenantId ? 0 : total;
+  const visibleDepartments = scopeTenantId ? departments : [];
+
   const load = () => {
-    if (effectiveTab === 'tenant' && !scopeTenantId) {
-      setUsers([]);
-      setTotal(0);
-      return;
-    }
+    if (effectiveTab === 'tenant' && !scopeTenantId) return;
     const params = new URLSearchParams({ scope: effectiveTab, page: String(page), pageSize: String(pageSize) });
     if (debouncedSearch) params.set('search', debouncedSearch);
     if (effectiveTab === 'tenant' && scopeTenantId) params.set('tenantId', scopeTenantId);
@@ -117,10 +119,7 @@ export default function AdminUsersPage() {
   };
 
   const loadDepartments = () => {
-    if (!scopeTenantId) {
-      setDepartments([]);
-      return;
-    }
+    if (!scopeTenantId) return;
     fetch(`${apiUrl}/departments?tenantId=${scopeTenantId}`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((data: { id: string; name: string }[]) =>
@@ -343,17 +342,17 @@ export default function AdminUsersPage() {
 
         <AdminTable
           columns={columns}
-          data={users}
+          data={visibleUsers}
           keyField="id"
           onRowClick={openEditDialog}
           emptyMessage={
             effectiveTab === 'tenant' && !scopeTenantId
               ? 'Select a tenant to view its users.'
-              : total === 0 && !debouncedSearch
+              : visibleTotal === 0 && !debouncedSearch
                 ? 'No users yet.'
                 : 'No users match your search.'
           }
-          pagination={{ page, pageSize, total, onPageChange: setPage }}
+          pagination={{ page, pageSize, total: visibleTotal, onPageChange: setPage }}
           toolbar={
             <>
               <div className="flex-1 min-w-50">
@@ -419,7 +418,7 @@ export default function AdminUsersPage() {
             <SearchableSelect
               id="createDepartmentId"
               label="Department"
-              options={departments}
+              options={visibleDepartments}
               value={createDepartmentId}
               onChange={setCreateDepartmentId}
             />
@@ -468,7 +467,7 @@ export default function AdminUsersPage() {
             <SearchableSelect
               id="editDepartmentId"
               label="Department"
-              options={departments}
+              options={visibleDepartments}
               value={editDepartmentId}
               onChange={setEditDepartmentId}
             />

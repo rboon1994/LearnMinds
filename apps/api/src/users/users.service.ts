@@ -34,7 +34,8 @@ export class UsersService {
   async findAll(query: UsersQueryDto, tenantId: string | null) {
     const search = query.search?.trim();
     const searchDigits = search?.replace(/\D/g, '');
-    const role = query.scope === UserScope.PLATFORM ? Role.SUPER_ADMIN : Role.USER;
+    const role =
+      query.scope === UserScope.PLATFORM ? Role.SUPER_ADMIN : Role.USER;
     const where: Prisma.UserWhereInput = {
       role,
       tenantId: query.scope === UserScope.PLATFORM ? null : tenantId,
@@ -53,7 +54,10 @@ export class UsersService {
           }
         : {}),
     };
-    return paginate<Prisma.UserGetPayload<{ select: typeof selectFields }>, Prisma.UserWhereInput>(
+    return paginate<
+      Prisma.UserGetPayload<{ select: typeof selectFields }>,
+      Prisma.UserWhereInput
+    >(
       this.prisma.user,
       { where, select: selectFields, orderBy: { createdAt: 'desc' } },
       { page: query.page, pageSize: query.pageSize },
@@ -62,12 +66,18 @@ export class UsersService {
 
   // Guards against an ADMIN assigning a departmentId that belongs to a different tenant —
   // Prisma's FK alone doesn't stop a valid-but-foreign departmentId from being written.
-  private async assertDepartmentInTenant(departmentId: string, tenantId: string) {
-    await this.prisma.department.findFirstOrThrow({ where: { id: departmentId, tenantId } });
+  private async assertDepartmentInTenant(
+    departmentId: string,
+    tenantId: string,
+  ) {
+    await this.prisma.department.findFirstOrThrow({
+      where: { id: departmentId, tenantId },
+    });
   }
 
   async create(dto: CreateUserDto, tenantId: string | null) {
-    const role = dto.scope === UserScope.PLATFORM ? Role.SUPER_ADMIN : Role.USER;
+    const role =
+      dto.scope === UserScope.PLATFORM ? Role.SUPER_ADMIN : Role.USER;
     if (role === Role.USER && dto.departmentId) {
       await this.assertDepartmentInTenant(dto.departmentId, tenantId as string);
     }
@@ -89,7 +99,10 @@ export class UsersService {
         select: selectFields,
       });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
         throw new ConflictException('Email already registered');
       }
       throw err;
@@ -113,20 +126,32 @@ export class UsersService {
     const data: Prisma.UserUncheckedUpdateInput = {
       ...(dto.fullName !== undefined && { fullName: dto.fullName }),
       ...(dto.email !== undefined && { email: dto.email }),
-      ...(dto.phoneCountryCode !== undefined && { phoneCountryCode: dto.phoneCountryCode }),
+      ...(dto.phoneCountryCode !== undefined && {
+        phoneCountryCode: dto.phoneCountryCode,
+      }),
       ...(dto.phoneNo !== undefined && { phoneNo: dto.phoneNo }),
     };
 
     // Only persist departmentId for Tenant Users (role=USER), and validate it
     if (existing.role === Role.USER && dto.departmentId) {
-      await this.assertDepartmentInTenant(dto.departmentId, existing.tenantId as string);
+      await this.assertDepartmentInTenant(
+        dto.departmentId,
+        existing.tenantId as string,
+      );
       data.departmentId = dto.departmentId;
     }
 
     try {
-      return await this.prisma.user.update({ where: { id }, data, select: selectFields });
+      return await this.prisma.user.update({
+        where: { id },
+        data,
+        select: selectFields,
+      });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
         throw new ConflictException('Email already registered');
       }
       throw err;
@@ -143,7 +168,11 @@ export class UsersService {
     const hashed = await bcrypt.hash(TEMP_PASSWORD, 10);
     return this.prisma.user.update({
       where: { id },
-      data: { password: hashed, mustChangePassword: true, status: Status.INACTIVE },
+      data: {
+        password: hashed,
+        mustChangePassword: true,
+        status: Status.INACTIVE,
+      },
       select: selectFields,
     });
   }

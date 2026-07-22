@@ -12,6 +12,7 @@ import { Role, TenantPackage } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { NavItemsService } from './nav-items.service';
+import { ReorderNavItemsDto } from './dto/reorder-nav-items.dto';
 import { UpsertNavItemDto } from './dto/upsert-nav-item.dto';
 
 @Controller('nav-items')
@@ -28,6 +29,11 @@ export class NavItemsController {
   @Post()
   create(@Body() dto: UpsertNavItemDto) {
     return this.svc.create(dto);
+  }
+
+  @Patch('reorder')
+  reorder(@Body() dto: ReorderNavItemsDto) {
+    return this.svc.reorder(dto.ids);
   }
 
   @Patch(':id')

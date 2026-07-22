@@ -111,7 +111,11 @@ export class StudentsService {
     const hashed = await bcrypt.hash(TEMP_PASSWORD, 10);
     return this.prisma.user.update({
       where: { id },
-      data: { password: hashed, mustChangePassword: true, status: Status.INACTIVE },
+      data: {
+        password: hashed,
+        mustChangePassword: true,
+        status: Status.INACTIVE,
+      },
       select: selectFields,
     });
   }

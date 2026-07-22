@@ -32,7 +32,11 @@ describe('EnrollmentsService', () => {
       const { service, prisma } = buildService();
       await expect(
         service.create(
-          { studentId: 'student-1', seriesId: 'series-1', courseId: 'course-1' },
+          {
+            studentId: 'student-1',
+            seriesId: 'series-1',
+            courseId: 'course-1',
+          },
           'admin-1',
         ),
       ).rejects.toThrow(BadRequestException);
@@ -41,11 +45,21 @@ describe('EnrollmentsService', () => {
 
     it('creates a course-level enrollment independent of any series', async () => {
       const { service, prisma } = buildService();
-      prisma.enrollment.create.mockResolvedValue({ id: 'enr-1', courseId: 'course-1', seriesId: null });
-      await service.create({ studentId: 'student-1', courseId: 'course-1' }, 'admin-1');
+      prisma.enrollment.create.mockResolvedValue({
+        id: 'enr-1',
+        courseId: 'course-1',
+        seriesId: null,
+      });
+      await service.create(
+        { studentId: 'student-1', courseId: 'course-1' },
+        'admin-1',
+      );
       expect(prisma.enrollment.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ courseId: 'course-1', seriesId: undefined }),
+          data: expect.objectContaining({
+            courseId: 'course-1',
+            seriesId: undefined,
+          }),
         }),
       );
     });
@@ -54,40 +68,64 @@ describe('EnrollmentsService', () => {
   describe('update', () => {
     it('rejects flipping a series enrollment into a course enrollment', async () => {
       const { service, prisma } = buildService();
-      prisma.enrollment.findUniqueOrThrow.mockResolvedValue({ seriesId: 'series-1', courseId: null });
-      await expect(service.update('enr-1', { courseId: 'course-1' })).rejects.toThrow(
-        BadRequestException,
-      );
+      prisma.enrollment.findUniqueOrThrow.mockResolvedValue({
+        seriesId: 'series-1',
+        courseId: null,
+      });
+      await expect(
+        service.update('enr-1', { courseId: 'course-1' }),
+      ).rejects.toThrow(BadRequestException);
       expect(prisma.enrollment.update).not.toHaveBeenCalled();
     });
 
     it('rejects flipping a course enrollment into a series enrollment', async () => {
       const { service, prisma } = buildService();
-      prisma.enrollment.findUniqueOrThrow.mockResolvedValue({ seriesId: null, courseId: 'course-1' });
-      await expect(service.update('enr-1', { seriesId: 'series-1' })).rejects.toThrow(
-        BadRequestException,
-      );
+      prisma.enrollment.findUniqueOrThrow.mockResolvedValue({
+        seriesId: null,
+        courseId: 'course-1',
+      });
+      await expect(
+        service.update('enr-1', { seriesId: 'series-1' }),
+      ).rejects.toThrow(BadRequestException);
       expect(prisma.enrollment.update).not.toHaveBeenCalled();
     });
 
     it('allows changing which series a series-based enrollment points to', async () => {
       const { service, prisma } = buildService();
-      prisma.enrollment.findUniqueOrThrow.mockResolvedValue({ seriesId: 'series-1', courseId: null });
-      prisma.enrollment.update.mockResolvedValue({ id: 'enr-1', seriesId: 'series-2' });
+      prisma.enrollment.findUniqueOrThrow.mockResolvedValue({
+        seriesId: 'series-1',
+        courseId: null,
+      });
+      prisma.enrollment.update.mockResolvedValue({
+        id: 'enr-1',
+        seriesId: 'series-2',
+      });
       await service.update('enr-1', { seriesId: 'series-2' });
       expect(prisma.enrollment.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ seriesId: 'series-2', courseId: undefined }),
+          data: expect.objectContaining({
+            seriesId: 'series-2',
+            courseId: undefined,
+          }),
         }),
       );
     });
 
     it('an explicit null for the inactive field is not mistaken for a type switch', async () => {
       const { service, prisma } = buildService();
-      prisma.enrollment.findUniqueOrThrow.mockResolvedValue({ seriesId: 'series-1', courseId: null });
-      prisma.enrollment.update.mockResolvedValue({ id: 'enr-1', seriesId: 'series-1' });
+      prisma.enrollment.findUniqueOrThrow.mockResolvedValue({
+        seriesId: 'series-1',
+        courseId: null,
+      });
+      prisma.enrollment.update.mockResolvedValue({
+        id: 'enr-1',
+        seriesId: 'series-1',
+      });
       await expect(
-        service.update('enr-1', { seriesId: 'series-1', courseId: null as unknown as undefined }),
+        service.update('enr-1', {
+          seriesId: 'series-1',
+          courseId: null as unknown as undefined,
+        }),
       ).resolves.toBeDefined();
       expect(prisma.enrollment.update).toHaveBeenCalled();
     });

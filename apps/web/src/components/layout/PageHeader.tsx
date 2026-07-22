@@ -20,7 +20,7 @@ export function PageHeader({ defaultTitle, backHref, subtitle, onOpenMobileMenu,
   const { user } = useAuth();
   const title = user?.tenant?.name ?? defaultTitle;
   return (
-    <main className="flex-1 px-4 sm:px-6 lg:px-6 py-6 overflow-x-hidden">
+    <main className="flex-1 px-4 sm:px-6 lg:px-6 py-6 overflow-x-clip">
       <div className="max-w-7xl mx-auto space-y-8">
         <motion.div
           initial={{ opacity: 0, y: 16 }}

@@ -41,6 +41,17 @@ enum AiAgentModelStatus {
   INACTIVE
 }
 
+enum KnowledgeBaseFileStatus {
+  PENDING
+  SYNCED
+  FAILED
+}
+
+enum AgentMessageRole {
+  USER
+  ASSISTANT
+}
+
 model Tenant {
   id           String         @id @default(cuid())
   name         String
@@ -57,27 +68,28 @@ model Tenant {
 }
 
 model User {
-  id                 String       @id @default(cuid())
-  email              String       @unique
+  id                 String              @id @default(cuid())
+  email              String              @unique
   password           String
   fullName           String
   phoneCountryCode   String?
   phoneNo            String?
-  role               Role         @default(USER)
-  status             Status       @default(ACTIVE)
-  mustChangePassword Boolean      @default(false)
+  role               Role                @default(USER)
+  status             Status              @default(ACTIVE)
+  mustChangePassword Boolean             @default(false)
   jobTitle           String?
   lastSignInAt       DateTime?
   tenantId           String?
-  tenant             Tenant?      @relation(fields: [tenantId], references: [id])
+  tenant             Tenant?             @relation(fields: [tenantId], references: [id])
   departmentId       String?
-  department         Department?  @relation(fields: [departmentId], references: [id])
-  studentId          String?      @unique
-  student            Student?     @relation(fields: [studentId], references: [id])
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  department         Department?         @relation(fields: [departmentId], references: [id])
+  studentId          String?             @unique
+  student            Student?            @relation(fields: [studentId], references: [id])
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   coursesCreated     Course[]
   enrollmentsGranted Enrollment[]
+  agentConversations AgentConversation[]
 }
 
 // Thin satellite for the Student "flavor" of a User row (role: STUDENT, tenantId: null) —
@@ -148,44 +160,44 @@ model CourseSeries {
 }
 
 model Course {
-  id          String        @id @default(cuid())
-  title       String
-  description String?
-  thumbnail   String?
-  startDate   DateTime?
-  endDate     DateTime?
-  status      ContentStatus @default(DRAFT)
-  tenantId    String?
-  tenant      Tenant?       @relation(fields: [tenantId], references: [id])
-  seriesId    String?
-  series      CourseSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
-  speakers    Speaker[]
+  id              String        @id @default(cuid())
+  title           String
+  description     String?
+  thumbnail       String?
+  startDate       DateTime?
+  endDate         DateTime?
+  status          ContentStatus @default(DRAFT)
+  tenantId        String?
+  tenant          Tenant?       @relation(fields: [tenantId], references: [id])
+  seriesId        String?
+  series          CourseSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  speakers        Speaker[]
   // Powers the "Contact via WhatsApp" button on /learn's locked-course modal — Super-Admin-only,
   // same as Series/Speaker. Button is hidden entirely on /learn when whatsappNumber is unset.
   whatsappNumber  String?
   whatsappMessage String?
-  createdById String?
-  createdBy   User?         @relation(fields: [createdById], references: [id])
-  lessons     Lesson[]
-  files       CourseFile[]
-  enrollments Enrollment[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdById     String?
+  createdBy       User?         @relation(fields: [createdById], references: [id])
+  lessons         Lesson[]
+  files           CourseFile[]
+  enrollments     Enrollment[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([tenantId])
   @@index([seriesId])
 }
 
 model Speaker {
-  id             String    @id @default(cuid())
-  name           String
-  title          String?
-  description    String?
-  thumbnail      String?
-  courses        Course[]
-  agentsCreated  AiAgent[]
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  name          String
+  title         String?
+  description   String?
+  thumbnail     String?
+  courses       Course[]
+  agentsCreated AiAgent[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model Lesson {
@@ -267,26 +279,85 @@ model AiAgentModel {
 }
 
 model AiAgent {
-  id           String        @id @default(cuid())
-  name         String
-  description  String?
-  systemPrompt String        @db.Text
-  instructions String?       @db.Text
-  thumbnail    String?
-  tenantId     String?
-  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  modelId      String
-  model        AiAgentModel  @relation(fields: [modelId], references: [id])
-  seriesId     String?
-  series       CourseSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
-  creatorId    String?
-  creator      Speaker?      @relation(fields: [creatorId], references: [id], onDelete: SetNull)
-  status       ContentStatus @default(DRAFT)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id              String              @id @default(cuid())
+  name            String
+  description     String?
+  systemPrompt    String              @db.Text
+  instructions    String?             @db.Text
+  thumbnail       String?
+  tenantId        String?
+  tenant          Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  modelId         String
+  model           AiAgentModel        @relation(fields: [modelId], references: [id])
+  seriesId        String?
+  series          CourseSeries?       @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  creatorId       String?
+  creator         Speaker?            @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  status          ContentStatus       @default(DRAFT)
+  knowledgeBaseId String?
+  knowledgeBase   KnowledgeBase?      @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
+  conversations   AgentConversation[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   @@index([tenantId])
   @@index([seriesId])
   @@index([modelId])
   @@index([creatorId])
+  @@index([knowledgeBaseId])
+}
+
+// Standalone, reusable document set + OpenAI Vector Store — many AiAgents can attach the same
+// KnowledgeBase (see AiAgent.knowledgeBaseId), so a shared reference doc set is uploaded and
+// vectorized once rather than duplicated per agent.
+model KnowledgeBase {
+  id            String              @id @default(cuid())
+  name          String
+  description   String?
+  vectorStoreId String?
+  files         KnowledgeBaseFile[]
+  agents        AiAgent[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+}
+
+model KnowledgeBaseFile {
+  id              String                  @id @default(cuid())
+  knowledgeBaseId String
+  knowledgeBase   KnowledgeBase           @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  fileName        String
+  fileUrl         String
+  mimeType        String
+  sizeBytes       Int
+  openaiFileId    String?
+  status          KnowledgeBaseFileStatus @default(PENDING)
+  createdAt       DateTime                @default(now())
+
+  @@index([knowledgeBaseId])
+}
+
+// No uniqueness on (agentId, userId) — a user can open multiple separate threads with the same agent.
+model AgentConversation {
+  id        String         @id @default(cuid())
+  agentId   String
+  agent     AiAgent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  messages  AgentMessage[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([agentId, userId])
+}
+
+model AgentMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           AgentMessageRole
+  content        String            @db.Text
+  createdAt      DateTime          @default(now())
+
+  @@index([conversationId])
 }

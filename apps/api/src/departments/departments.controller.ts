@@ -31,7 +31,10 @@ export class DepartmentsController {
 
   @Get()
   findAll(@Request() req: AuthReq, @Query() query: FindDepartmentsQueryDto) {
-    const tenantId = req.user.role === Role.ADMIN ? req.user.tenantId : (query.tenantId ?? null);
+    const tenantId =
+      req.user.role === Role.ADMIN
+        ? req.user.tenantId
+        : (query.tenantId ?? null);
     return this.svc.findAll(tenantId);
   }
 

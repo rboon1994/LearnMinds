@@ -32,4 +32,8 @@ export class CreateAiAgentDto {
   @IsString()
   @IsOptional()
   creatorId?: string | null;
+
+  @IsString()
+  @IsOptional()
+  knowledgeBaseId?: string | null;
 }

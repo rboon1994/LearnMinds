@@ -10,6 +10,7 @@ const INCLUDE = {
   model: true,
   series: true,
   creator: true,
+  knowledgeBase: true,
 } satisfies Prisma.AiAgentInclude;
 
 type AiAgentWithRelations = Prisma.AiAgentGetPayload<{
@@ -67,6 +68,7 @@ export class AiAgentsService {
         modelId: dto.modelId,
         seriesId: dto.seriesId ?? null,
         creatorId: dto.creatorId ?? null,
+        knowledgeBaseId: dto.knowledgeBaseId ?? null,
         tenantId: null,
       },
       include: INCLUDE,
@@ -89,6 +91,7 @@ export class AiAgentsService {
         modelId: dto.modelId,
         seriesId: dto.seriesId,
         creatorId: dto.creatorId,
+        knowledgeBaseId: dto.knowledgeBaseId,
       },
       include: INCLUDE,
     });

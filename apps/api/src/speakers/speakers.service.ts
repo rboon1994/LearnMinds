@@ -13,7 +13,9 @@ export class SpeakersService {
     return paginate<Prisma.SpeakerGetPayload<object>, Prisma.SpeakerWhereInput>(
       this.prisma.speaker,
       {
-        where: query.search ? { name: { contains: query.search, mode: 'insensitive' } } : {},
+        where: query.search
+          ? { name: { contains: query.search, mode: 'insensitive' } }
+          : {},
         orderBy: { name: 'asc' },
       },
       { page: query.page, pageSize: query.pageSize },

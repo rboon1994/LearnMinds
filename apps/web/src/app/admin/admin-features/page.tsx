@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Reorder } from 'framer-motion';
+import { AdminLayout } from '@/components/layout/AdminLayout';
+import { AdminTable } from '@/components/ui/AdminTable';
+import type { AdminTableColumn } from '@/components/ui/AdminTable';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
 
@@ -22,8 +24,6 @@ export default function AdminFeaturesPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [features, setFeatures] = useState<AdminFeature[]>([]);
-  const featuresRef = useRef(features);
-  useEffect(() => { featuresRef.current = features; }, [features]);
 
   useEffect(() => {
     if (user && user.role !== 'SUPER_ADMIN') { router.replace('/admin'); return; }
@@ -48,61 +48,43 @@ export default function AdminFeaturesPage() {
     setFeatures((prev) => prev.map((f) => (f.id === feature.id ? { ...f, packages: next } : f)));
   };
 
-  const persistOrder = async () => {
+  const persistOrder = async (ordered: AdminFeature[]) => {
     const token = localStorage.getItem('token');
     await fetch(`${apiUrl}/admin-features/reorder`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: featuresRef.current.map((f) => f.id) }),
+      body: JSON.stringify({ ids: ordered.map((f) => f.id) }),
     });
   };
 
   if (user?.role !== 'SUPER_ADMIN') return null;
 
+  const columns: AdminTableColumn<AdminFeature>[] = [
+    { header: 'Feature', render: (feature) => feature.name },
+    { header: 'Description', render: (feature) => feature.description ?? '—' },
+    ...ALL_PACKAGES.map((pkg) => ({
+      header: pkg,
+      className: 'text-center',
+      render: (feature: AdminFeature) => (
+        <input
+          type="checkbox"
+          checked={feature.packages.includes(pkg)}
+          onChange={() => togglePackage(feature, pkg)}
+          className="w-4 h-4 accent-indigo-600 cursor-pointer"
+        />
+      ),
+    })),
+  ];
+
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold text-slate-900 mb-6">Admin Feature Access</h1>
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <div className="min-w-160 text-sm">
-          <div className="flex items-center px-4 py-3 bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-            <div className="w-8 shrink-0" />
-            <div className="flex-1">Feature</div>
-            <div className="flex-1">Description</div>
-            {ALL_PACKAGES.map((pkg) => (
-              <div key={pkg} className="w-20 shrink-0 text-center">{pkg}</div>
-            ))}
-          </div>
-          <Reorder.Group
-            axis="y"
-            values={features}
-            onReorder={setFeatures}
-            className="divide-y divide-slate-100"
-          >
-            {features.map((feature) => (
-              <Reorder.Item
-                key={feature.id}
-                value={feature}
-                onDragEnd={persistOrder}
-                className="flex items-center px-4 py-3 bg-white hover:bg-slate-50"
-              >
-                <div className="w-8 shrink-0 text-slate-300 cursor-grab active:cursor-grabbing select-none">⠿</div>
-                <div className="flex-1 font-medium text-slate-900">{feature.name}</div>
-                <div className="flex-1 text-slate-500">{feature.description ?? '—'}</div>
-                {ALL_PACKAGES.map((pkg) => (
-                  <div key={pkg} className="w-20 shrink-0 text-center">
-                    <input
-                      type="checkbox"
-                      checked={feature.packages.includes(pkg)}
-                      onChange={() => togglePackage(feature, pkg)}
-                      className="w-4 h-4 accent-indigo-600 cursor-pointer"
-                    />
-                  </div>
-                ))}
-              </Reorder.Item>
-            ))}
-          </Reorder.Group>
-        </div>
-      </div>
-    </div>
+    <AdminLayout title="Admin Feature Access" backHref="/admin">
+      <AdminTable
+        columns={columns}
+        data={features}
+        keyField="id"
+        emptyMessage="No admin features yet."
+        reorder={{ onReorder: setFeatures, onReorderEnd: persistOrder }}
+      />
+    </AdminLayout>
   );
 }

@@ -38,4 +38,8 @@ export class UpdateAiAgentDto {
   @IsString()
   @IsOptional()
   creatorId?: string | null;
+
+  @IsString()
+  @IsOptional()
+  knowledgeBaseId?: string | null;
 }
