@@ -170,7 +170,13 @@ export class CoursesService {
     const course = await this.prisma.course.findFirstOrThrow({
       where: { id, ...this.visibilityWhere(actor) },
       include: {
-        lessons: { orderBy: { order: 'asc' } },
+        lessons: {
+          where:
+            actor.role === Role.SUPER_ADMIN
+              ? undefined
+              : { status: ContentStatus.PUBLISHED },
+          orderBy: { order: 'asc' },
+        },
         files: true,
         speakers: { select: { id: true, name: true } },
       },
@@ -185,6 +191,37 @@ export class CoursesService {
     return this.prisma.course.findFirstOrThrow({
       where: { id, ...this.visibilityWhere(actor) },
     });
+  }
+
+  // orderBy lastViewedAt desc is served directly by LessonView's [userId, lastViewedAt] index.
+  // Explicit `select` (not `include`) on lesson/course keeps this to just the title fields
+  // needed for display — a bare include would drag along every Course field (description,
+  // thumbnail, whatsapp fields, etc.) on every one of a user's lesson-view rows.
+  findLessonViewsForUserAsAdmin(
+    userId: string,
+    pagination: { page: number; pageSize: number },
+  ) {
+    return paginate(
+      this.prisma.lessonView,
+      {
+        where: { userId },
+        orderBy: { lastViewedAt: 'desc' },
+        select: {
+          id: true,
+          viewCount: true,
+          firstViewedAt: true,
+          lastViewedAt: true,
+          lesson: {
+            select: {
+              id: true,
+              title: true,
+              course: { select: { id: true, title: true } },
+            },
+          },
+        },
+      },
+      pagination,
+    );
   }
 
   async create(dto: CreateCourseDto, actor: Actor) {

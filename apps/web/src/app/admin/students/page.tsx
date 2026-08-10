@@ -4,15 +4,17 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
 import { AdminLayout } from '@/components/layout/AdminLayout';
+import { UserActivityDialog } from '@/components/admin/UserActivityDialog';
 import { AdminTable } from '@/components/ui/AdminTable';
 import type { AdminTableColumn } from '@/components/ui/AdminTable';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { ConfirmDeleteDialog, ConfirmDialog, Dialog } from '@/components/ui/Dialog';
+import { ConfirmDialog, Dialog } from '@/components/ui/Dialog';
 import { FileUpload } from '@/components/ui/FileUpload';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { PhoneField } from '@/components/ui/PhoneField';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
@@ -26,6 +28,7 @@ type Student = {
   phoneNo: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   lastSignInAt: string | null;
+  _count: { agentConversations: number; lessonViews: number };
 };
 
 type BulkStudentInput = {
@@ -65,6 +68,12 @@ const ACCOUNT_STATUS_BADGE_CLASSES: Record<Student['status'], string> = {
   INACTIVE: 'bg-slate-100 text-slate-600',
   SUSPENDED: 'bg-red-100 text-red-700',
 };
+
+const STATUS_FILTER_OPTIONS = [
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'INACTIVE', label: 'Inactive' },
+  { value: 'SUSPENDED', label: 'Suspended' },
+];
 
 function phoneKey(row: { phoneCountryCode?: string | null; phoneNo?: string | null }) {
   return `${row.phoneCountryCode ?? ''}${row.phoneNo ?? ''}`;
@@ -159,6 +168,7 @@ export default function AdminStudentsPage() {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [dedupStudents, setDedupStudents] = useState<Student[]>([]);
@@ -183,12 +193,15 @@ export default function AdminStudentsPage() {
   const [editDialCode, setEditDialCode] = useState('60');
   const [editError, setEditError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmSuspend, setConfirmSuspend] = useState(false);
+  const [confirmUnsuspend, setConfirmUnsuspend] = useState(false);
   const [confirmResetPassword, setConfirmResetPassword] = useState(false);
+  const [activityStudent, setActivityStudent] = useState<Student | null>(null);
 
   const load = () => {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (debouncedSearch) params.set('search', debouncedSearch);
+    if (statusFilter) params.set('status', statusFilter);
     fetch(`${apiUrl}/students?${params.toString()}`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((res: { data: Student[]; total: number }) => {
@@ -220,7 +233,7 @@ export default function AdminStudentsPage() {
     if (!user) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, router, page, debouncedSearch]);
+  }, [user, router, page, debouncedSearch, statusFilter]);
 
   const uploadableCount =
     previewRows?.filter((row) => row.status !== 'error' && row.status !== 'duplicate').length ?? 0;
@@ -249,6 +262,26 @@ export default function AdminStudentsPage() {
         >
           {student.status}
         </span>
+      ),
+    },
+    { header: 'Chat History', render: (student) => student._count.agentConversations },
+    { header: 'Courses Viewed', render: (student) => student._count.lessonViews },
+    {
+      header: 'Activity',
+      render: (student) => (
+        <button
+          type="button"
+          // stopPropagation: the row itself already opens the Edit dialog on click.
+          onClick={(e) => {
+            e.stopPropagation();
+            setActivityStudent(student);
+          }}
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+          aria-label={`View activity for ${student.fullName}`}
+        >
+          <Icon name="eye" className="h-3.5 w-3.5" />
+          User Log
+        </button>
       ),
     },
   ];
@@ -329,7 +362,8 @@ export default function AdminStudentsPage() {
 
   const closeEditDialog = () => {
     setEditingStudent(null);
-    setConfirmDelete(false);
+    setConfirmSuspend(false);
+    setConfirmUnsuspend(false);
     setConfirmResetPassword(false);
   };
 
@@ -366,6 +400,8 @@ export default function AdminStudentsPage() {
     load();
   };
 
+  // Also doubles as the Unsuspend action — the backend always sets status: INACTIVE as a side
+  // effect of resetting the password, same as UsersService.resetPassword.
   const resetStudentPassword = async () => {
     if (!editingStudent) return;
     const res = await fetch(`${apiUrl}/students/${editingStudent.id}/reset-password`, {
@@ -377,19 +413,21 @@ export default function AdminStudentsPage() {
       return;
     }
     toast.reset();
+    setEditingStudent((prev) => (prev ? { ...prev, status: 'INACTIVE' } : prev));
+    load();
   };
 
-  const deleteStudent = async () => {
+  const suspendStudent = async () => {
     if (!editingStudent) return;
-    const res = await fetch(`${apiUrl}/students/${editingStudent.id}`, {
-      method: 'DELETE',
+    const res = await fetch(`${apiUrl}/students/${editingStudent.id}/suspend`, {
+      method: 'PATCH',
       headers: authHeaders(),
     });
     if (!res.ok) {
-      toast.deleteFailed();
+      toast.saveFailed();
       return;
     }
-    toast.deleted();
+    toast.saved();
     closeEditDialog();
     load();
   };
@@ -491,17 +529,31 @@ export default function AdminStudentsPage() {
         emptyMessage={total === 0 && !debouncedSearch ? 'No students yet.' : 'No students match your search.'}
         pagination={{ page, pageSize, total, onPageChange: setPage }}
         toolbar={
-          <div className="flex-1 min-w-50">
-            <Input
-              id="searchStudents"
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              placeholder="Search by full name, email address, or phone number..."
-              value={search}
-            />
-          </div>
+          <>
+            <div className="flex-1 min-w-50">
+              <Input
+                id="searchStudents"
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search by full name, email address, or phone number..."
+                value={search}
+              />
+            </div>
+            <div className="w-full sm:w-48">
+              <SearchableSelect
+                id="statusFilter"
+                onChange={(value) => {
+                  setStatusFilter(value);
+                  setPage(1);
+                }}
+                options={STATUS_FILTER_OPTIONS}
+                placeholder="All status"
+                value={statusFilter}
+              />
+            </div>
+          </>
         }
       />
 
@@ -709,24 +761,45 @@ export default function AdminStudentsPage() {
             >
               Reset Password
             </Button>
-            <Button
-              type="button"
-              variant="danger"
-              onClick={() => setConfirmDelete(true)}
-              leftIcon={<Icon name="trash" className="h-4 w-4 mr-1.5" />}
-            >
-              Delete
-            </Button>
+            {editingStudent?.status === 'SUSPENDED' ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirmUnsuspend(true)}
+                leftIcon={<Icon name="lock" className="h-4 w-4 mr-1.5" />}
+              >
+                Unsuspend
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => setConfirmSuspend(true)}
+                leftIcon={<Icon name="lock" className="h-4 w-4 mr-1.5" />}
+              >
+                Suspend
+              </Button>
+            )}
           </div>
         </form>
       </Dialog>
 
-      <ConfirmDeleteDialog
-        isOpen={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        onConfirm={deleteStudent}
-        title="Delete Student"
-        userEmail={user?.email ?? ''}
+      <ConfirmDialog
+        isOpen={confirmSuspend}
+        onClose={() => setConfirmSuspend(false)}
+        onConfirm={suspendStudent}
+        title="Suspend Student"
+        description={`Suspend ${editingStudent?.email ?? 'this student'}? They will be immediately blocked from logging in.`}
+        confirmLabel="Suspend"
+      />
+
+      <ConfirmDialog
+        isOpen={confirmUnsuspend}
+        onClose={() => setConfirmUnsuspend(false)}
+        onConfirm={resetStudentPassword}
+        title="Unsuspend Student"
+        description={`Unsuspend ${editingStudent?.email ?? 'this student'}? This also resets their password — they will need to set a new one on next login.`}
+        confirmLabel="Unsuspend"
       />
 
       <ConfirmDialog
@@ -737,6 +810,15 @@ export default function AdminStudentsPage() {
         description={`Reset password for ${editingStudent?.email ?? 'this student'}? They will need to set a new password on next login.`}
         confirmLabel="Reset Password"
       />
+
+      {activityStudent && (
+        <UserActivityDialog
+          userId={activityStudent.id}
+          userLabel={activityStudent.fullName}
+          isOpen
+          onClose={() => setActivityStudent(null)}
+        />
+      )}
     </AdminLayout>
   );
 }

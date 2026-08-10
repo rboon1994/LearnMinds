@@ -17,6 +17,7 @@ const enrollmentInclude = {
   tenant: { select: { id: true, name: true } },
   series: { select: { id: true, name: true } },
   course: { select: { id: true, title: true, startDate: true, endDate: true } },
+  agent: { select: { id: true, name: true } },
 } satisfies Prisma.EnrollmentInclude;
 
 @Injectable()
@@ -43,6 +44,7 @@ export class EnrollmentsService {
             { tenant: { name: { contains: search, mode: 'insensitive' } } },
             { series: { name: { contains: search, mode: 'insensitive' } } },
             { course: { title: { contains: search, mode: 'insensitive' } } },
+            { agent: { name: { contains: search, mode: 'insensitive' } } },
           ],
         }
       : {};
@@ -67,9 +69,11 @@ export class EnrollmentsService {
         'Exactly one of studentId or tenantId is required',
       );
     }
-    if (Boolean(dto.seriesId) === Boolean(dto.courseId)) {
+    if (
+      [dto.seriesId, dto.courseId, dto.agentId].filter(Boolean).length !== 1
+    ) {
       throw new BadRequestException(
-        'Exactly one of seriesId or courseId is required',
+        'Exactly one of seriesId, courseId, or agentId is required',
       );
     }
     try {
@@ -77,6 +81,7 @@ export class EnrollmentsService {
         data: {
           seriesId: dto.seriesId,
           courseId: dto.courseId,
+          agentId: dto.agentId,
           studentId: dto.studentId,
           tenantId: dto.tenantId,
           enrolledById,
@@ -94,23 +99,38 @@ export class EnrollmentsService {
     }
   }
 
-  // The Edit dialog UI locks an enrollment's type (Series vs Course) at creation, but that's a
-  // client affordance, not enforcement — reject any attempt to flip it via a direct API call.
-  // `!= null` (not `!== undefined`) so an explicitly-sent `null` for the inactive field (some
-  // form libraries send both fields, one as null) isn't mistaken for "trying to switch".
+  // The Edit dialog UI locks an enrollment's type (Series vs Course vs Agent) at creation, but
+  // that's a client affordance, not enforcement — reject any attempt to flip it via a direct API
+  // call. `!= null` (not `!== undefined`) so an explicitly-sent `null` for an inactive field
+  // (some form libraries send all fields, unused ones as null) isn't mistaken for "trying to
+  // switch".
   async update(id: string, dto: UpdateEnrollmentDto) {
     const existing = await this.prisma.enrollment.findUniqueOrThrow({
       where: { id },
-      select: { seriesId: true, courseId: true },
+      select: { seriesId: true, courseId: true, agentId: true },
     });
-    if (existing.seriesId !== null && dto.courseId != null) {
+    if (
+      existing.seriesId !== null &&
+      (dto.courseId != null || dto.agentId != null)
+    ) {
       throw new BadRequestException(
-        'Cannot change a series enrollment into a course enrollment',
+        'Cannot change a series enrollment into a course or agent enrollment',
       );
     }
-    if (existing.courseId !== null && dto.seriesId != null) {
+    if (
+      existing.courseId !== null &&
+      (dto.seriesId != null || dto.agentId != null)
+    ) {
       throw new BadRequestException(
-        'Cannot change a course enrollment into a series enrollment',
+        'Cannot change a course enrollment into a series or agent enrollment',
+      );
+    }
+    if (
+      existing.agentId !== null &&
+      (dto.seriesId != null || dto.courseId != null)
+    ) {
+      throw new BadRequestException(
+        'Cannot change an agent enrollment into a series or course enrollment',
       );
     }
     try {
@@ -119,6 +139,7 @@ export class EnrollmentsService {
         data: {
           seriesId: dto.seriesId,
           courseId: dto.courseId,
+          agentId: dto.agentId,
           expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
         },
       });

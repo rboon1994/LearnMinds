@@ -150,4 +150,15 @@ export class LessonsController {
     });
     createReadStream(path, { start, end }).pipe(res);
   }
+
+  // Self-service: any role that can watch the lesson can record having watched it.
+  @Post(':id/view')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.USER, Role.STUDENT)
+  recordView(
+    @Param('courseId') courseId: string,
+    @Param('id') id: string,
+    @Request() req: AuthReq,
+  ) {
+    return this.svc.recordView(courseId, id, req.user);
+  }
 }

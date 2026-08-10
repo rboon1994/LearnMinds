@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AdminLayout } from '@/components/layout/AdminLayout';
+import { UserActivityDialog } from '@/components/admin/UserActivityDialog';
 import { AdminTable } from '@/components/ui/AdminTable';
 import type { AdminTableColumn } from '@/components/ui/AdminTable';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { ConfirmDeleteDialog, ConfirmDialog, Dialog } from '@/components/ui/Dialog';
+import { ConfirmDialog, Dialog } from '@/components/ui/Dialog';
 import { FeatureGate } from '@/components/ui/FeatureGate';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
@@ -28,11 +29,12 @@ type ManagedUser = {
   phoneCountryCode: string | null;
   phoneNo: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
-  role: 'SUPER_ADMIN' | 'USER';
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'USER';
   tenantId: string | null;
   departmentId: string | null;
   department: { id: string; name: string } | null;
   lastSignInAt: string | null;
+  _count: { agentConversations: number; lessonViews: number };
 };
 
 const STATUS_BADGE_CLASSES: Record<ManagedUser['status'], string> = {
@@ -40,6 +42,17 @@ const STATUS_BADGE_CLASSES: Record<ManagedUser['status'], string> = {
   INACTIVE: 'bg-slate-100 text-slate-600',
   SUSPENDED: 'bg-red-100 text-red-700',
 };
+
+const STATUS_FILTER_OPTIONS = [
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'INACTIVE', label: 'Inactive' },
+  { value: 'SUSPENDED', label: 'Suspended' },
+];
+
+const ROLE_FILTER_OPTIONS = [
+  { value: 'SUPER_ADMIN', label: 'Super Admin' },
+  { value: 'ADMIN', label: 'Tenant Admin' },
+];
 
 function authHeaders() {
   const token = localStorage.getItem('token');
@@ -68,6 +81,8 @@ export default function AdminUsersPage() {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
@@ -88,8 +103,10 @@ export default function AdminUsersPage() {
   const [editDepartmentId, setEditDepartmentId] = useState('');
   const [editError, setEditError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmSuspend, setConfirmSuspend] = useState(false);
+  const [confirmUnsuspend, setConfirmUnsuspend] = useState(false);
   const [confirmResetPassword, setConfirmResetPassword] = useState(false);
+  const [activityUser, setActivityUser] = useState<ManagedUser | null>(null);
 
   // ADMIN is always scoped to their own tenant; SUPER_ADMIN on the Tenant Users tab must pick one.
   const scopeTenantId = user?.role === 'ADMIN' ? (user.tenant?.id ?? '') : selectedTenantId;
@@ -108,6 +125,8 @@ export default function AdminUsersPage() {
     if (effectiveTab === 'tenant' && !scopeTenantId) return;
     const params = new URLSearchParams({ scope: effectiveTab, page: String(page), pageSize: String(pageSize) });
     if (debouncedSearch) params.set('search', debouncedSearch);
+    if (statusFilter) params.set('status', statusFilter);
+    if (effectiveTab === 'platform' && roleFilter) params.set('role', roleFilter);
     if (effectiveTab === 'tenant' && scopeTenantId) params.set('tenantId', scopeTenantId);
     fetch(`${apiUrl}/users?${params.toString()}`, { headers: authHeaders() })
       .then((r) => r.json())
@@ -141,7 +160,7 @@ export default function AdminUsersPage() {
     if (!user) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, router, effectiveTab, scopeTenantId, page, debouncedSearch]);
+  }, [user, router, effectiveTab, scopeTenantId, page, debouncedSearch, statusFilter, roleFilter]);
 
   useEffect(() => {
     if (!user || effectiveTab !== 'tenant') return;
@@ -166,6 +185,11 @@ export default function AdminUsersPage() {
         row.phoneCountryCode || row.phoneNo ? `${row.phoneCountryCode ?? ''}${row.phoneNo ?? ''}`.trim() : '—',
     },
     {
+      header: 'Role',
+      hidden: effectiveTab === 'tenant',
+      render: (row) => (row.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Tenant Admin'),
+    },
+    {
       header: 'Department',
       hidden: effectiveTab === 'platform',
       render: (row) => row.department?.name ?? '—',
@@ -176,6 +200,27 @@ export default function AdminUsersPage() {
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[row.status]}`}>
           {row.status}
         </span>
+      ),
+    },
+    { header: 'Chat History', render: (row) => row._count.agentConversations },
+    { header: 'Courses Viewed', render: (row) => row._count.lessonViews },
+    {
+      header: 'Activity',
+      render: (row) => (
+        <button
+          type="button"
+          // stopPropagation: the row itself already opens the Edit dialog on click — this
+          // button must not trigger that too.
+          onClick={(e) => {
+            e.stopPropagation();
+            setActivityUser(row);
+          }}
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+          aria-label={`View activity for ${row.fullName}`}
+        >
+          <Icon name="eye" className="h-3.5 w-3.5" />
+          User Log
+        </button>
       ),
     },
   ];
@@ -241,7 +286,8 @@ export default function AdminUsersPage() {
 
   const closeEditDialog = () => {
     setEditingUser(null);
-    setConfirmDelete(false);
+    setConfirmSuspend(false);
+    setConfirmUnsuspend(false);
     setConfirmResetPassword(false);
   };
 
@@ -290,19 +336,24 @@ export default function AdminUsersPage() {
       return;
     }
     toast.reset();
+    // Always sets status: INACTIVE on the backend — sync locally (keeps the edit dialog open,
+    // e.g. for Reset Password) so the Suspend/Unsuspend toggle and table badge reflect it
+    // immediately, without waiting for the dialog to reopen.
+    setEditingUser((prev) => (prev ? { ...prev, status: 'INACTIVE' } : prev));
+    load();
   };
 
-  const deleteUser = async () => {
+  const suspendUser = async () => {
     if (!editingUser) return;
-    const res = await fetch(`${apiUrl}/users/${editingUser.id}`, {
-      method: 'DELETE',
+    const res = await fetch(`${apiUrl}/users/${editingUser.id}/suspend`, {
+      method: 'PATCH',
       headers: authHeaders(),
     });
     if (!res.ok) {
-      toast.deleteFailed();
+      toast.saveFailed();
       return;
     }
-    toast.deleted();
+    toast.saved();
     closeEditDialog();
     load();
   };
@@ -366,6 +417,32 @@ export default function AdminUsersPage() {
                   value={search}
                 />
               </div>
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  id="statusFilter"
+                  onChange={(value) => {
+                    setStatusFilter(value);
+                    setPage(1);
+                  }}
+                  options={STATUS_FILTER_OPTIONS}
+                  placeholder="All status"
+                  value={statusFilter}
+                />
+              </div>
+              {isSuperAdmin && activeTab === 'platform' && (
+                <div className="w-full sm:w-48">
+                  <SearchableSelect
+                    id="roleFilter"
+                    onChange={(value) => {
+                      setRoleFilter(value);
+                      setPage(1);
+                    }}
+                    options={ROLE_FILTER_OPTIONS}
+                    placeholder="All Roles"
+                    value={roleFilter}
+                  />
+                </div>
+              )}
               {isSuperAdmin && activeTab === 'tenant' && (
                 <div className="w-56">
                   <SearchableSelect
@@ -489,24 +566,45 @@ export default function AdminUsersPage() {
             >
               Reset Password
             </Button>
-            <Button
-              type="button"
-              variant="danger"
-              onClick={() => setConfirmDelete(true)}
-              leftIcon={<Icon name="trash" className="h-4 w-4 mr-1.5" />}
-            >
-              Delete
-            </Button>
+            {editingUser?.status === 'SUSPENDED' ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirmUnsuspend(true)}
+                leftIcon={<Icon name="lock" className="h-4 w-4 mr-1.5" />}
+              >
+                Unsuspend
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => setConfirmSuspend(true)}
+                leftIcon={<Icon name="lock" className="h-4 w-4 mr-1.5" />}
+              >
+                Suspend
+              </Button>
+            )}
           </div>
         </form>
       </Dialog>
 
-      <ConfirmDeleteDialog
-        isOpen={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        onConfirm={deleteUser}
-        title="Delete User"
-        userEmail={user?.email ?? ''}
+      <ConfirmDialog
+        isOpen={confirmSuspend}
+        onClose={() => setConfirmSuspend(false)}
+        onConfirm={suspendUser}
+        title="Suspend User"
+        description={`Suspend ${editingUser?.email ?? 'this user'}? They will be immediately blocked from logging in.`}
+        confirmLabel="Suspend"
+      />
+
+      <ConfirmDialog
+        isOpen={confirmUnsuspend}
+        onClose={() => setConfirmUnsuspend(false)}
+        onConfirm={resetUserPassword}
+        title="Unsuspend User"
+        description={`Unsuspend ${editingUser?.email ?? 'this user'}? This also resets their password — they will need to set a new one on next login.`}
+        confirmLabel="Unsuspend"
       />
 
       <ConfirmDialog
@@ -517,6 +615,15 @@ export default function AdminUsersPage() {
         description={`Reset password for ${editingUser?.email ?? 'this user'}? They will need to set a new password on next login.`}
         confirmLabel="Reset Password"
       />
+
+      {activityUser && (
+        <UserActivityDialog
+          userId={activityUser.id}
+          userLabel={activityUser.fullName}
+          isOpen
+          onClose={() => setActivityUser(null)}
+        />
+      )}
     </AdminLayout>
   );
 }

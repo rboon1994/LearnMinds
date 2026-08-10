@@ -58,6 +58,7 @@ export default function AdminKnowledgeBasePage() {
 
   const [deletingKb, setDeletingKb] = useState<KnowledgeBase | null>(null);
   const [deletingFile, setDeletingFile] = useState<KnowledgeBaseFile | null>(null);
+  const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
 
   const selected = knowledgeBases.find((kb) => kb.id === selectedId) ?? null;
 
@@ -148,6 +149,7 @@ export default function AdminKnowledgeBasePage() {
 
   const uploadFile = async (file: File) => {
     if (!selectedId) return;
+    setUploadingFileName(file.name);
     const formData = new FormData();
     formData.append('file', file);
     const res = await fetch(`${apiUrl}/knowledge-bases/${selectedId}/files`, {
@@ -155,6 +157,7 @@ export default function AdminKnowledgeBasePage() {
       headers: authHeaders(),
       body: formData,
     });
+    setUploadingFileName(null);
     if (!res.ok) {
       toast.saveFailed();
       return;
@@ -228,6 +231,15 @@ export default function AdminKnowledgeBasePage() {
               <>
                 <h2 className="text-lg font-semibold text-slate-900 mb-3">{selected.name}</h2>
                 <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 mb-4 max-h-96 overflow-y-auto">
+                  {uploadingFileName && (
+                    <div className="flex items-center px-4 py-3 opacity-60">
+                      <Icon name="file" className="h-4 w-4 mr-3 text-slate-400 shrink-0 animate-pulse" />
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate text-slate-900">{uploadingFileName}</p>
+                        <p className="text-xs text-slate-400">Uploading…</p>
+                      </div>
+                    </div>
+                  )}
                   {files.map((file) => (
                     <div key={file.id} className="flex items-center px-4 py-3">
                       <Icon name="file" className="h-4 w-4 mr-3 text-slate-400 shrink-0" />
@@ -245,7 +257,9 @@ export default function AdminKnowledgeBasePage() {
                       </button>
                     </div>
                   ))}
-                  {files.length === 0 && <p className="px-4 py-6 text-center text-slate-400">No files yet.</p>}
+                  {files.length === 0 && !uploadingFileName && (
+                    <p className="px-4 py-6 text-center text-slate-400">No files yet.</p>
+                  )}
                 </div>
                 <FileUpload
                   key={files.length}
@@ -253,6 +267,7 @@ export default function AdminKnowledgeBasePage() {
                   acceptLabel="PDF, Word, PowerPoint, TXT, MD, CSV, JSON, HTML · Max 15MB"
                   id="kbFile"
                   maxSizeBytes={15 * 1024 * 1024}
+                  disabled={!!uploadingFileName}
                   onFilesSelected={([file]) => file && uploadFile(file)}
                 />
               </>

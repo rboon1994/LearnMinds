@@ -9,6 +9,10 @@ export class UpdateEnrollmentDto {
   @IsOptional()
   courseId?: string;
 
+  @IsString()
+  @IsOptional()
+  agentId?: string;
+
   @IsDateString()
   @IsOptional()
   expiresAt?: string;

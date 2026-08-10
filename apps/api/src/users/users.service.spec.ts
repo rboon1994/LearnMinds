@@ -37,21 +37,16 @@ describe('UsersService', () => {
     );
   });
 
-  it('findAll scopes the Platform Admins list to tenantId: null regardless of the tenantId param', async () => {
+  it('findAll scopes the Platform Admins list to SUPER_ADMIN + ADMIN across every tenant, ignoring the tenantId param', async () => {
     const prisma = makePrismaMock();
     const svc = new UsersService(prisma as any);
     await svc.findAll(
       { scope: UserScope.PLATFORM, page: 1, pageSize: 10 },
       'tenant-a',
     );
-    expect(prisma.user.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          role: Role.SUPER_ADMIN,
-          tenantId: null,
-        }),
-      }),
-    );
+    const where = prisma.user.findMany.mock.calls[0][0].where;
+    expect(where.role).toEqual({ in: [Role.SUPER_ADMIN, Role.ADMIN] });
+    expect(where).not.toHaveProperty('tenantId');
   });
 
   it('update rejects a row outside the ADMIN scope tenant before writing anything', async () => {
@@ -71,20 +66,40 @@ describe('UsersService', () => {
     expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
-  it('delete for SUPER_ADMIN (scope=null) allows role=USER or role=SUPER_ADMIN, never STUDENT', async () => {
+  it('suspend for SUPER_ADMIN (scope=null) allows role=USER, role=SUPER_ADMIN, or role=ADMIN, never STUDENT', async () => {
     const prisma = makePrismaMock();
     prisma.user.findFirstOrThrow.mockResolvedValue({
       id: 'user-1',
       tenantId: null,
     });
+    prisma.user.update.mockResolvedValue({ id: 'user-1', status: 'SUSPENDED' });
     const svc = new UsersService(prisma as any);
-    await svc.delete('user-1', null);
+    await svc.suspend('user-1', null);
     expect(prisma.user.findFirstOrThrow).toHaveBeenCalledWith({
-      where: { id: 'user-1', role: { in: [Role.USER, Role.SUPER_ADMIN] } },
+      where: {
+        id: 'user-1',
+        role: { in: [Role.USER, Role.SUPER_ADMIN, Role.ADMIN] },
+      },
     });
-    expect(prisma.user.delete).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'user-1' },
+        data: { status: 'SUSPENDED' },
+      }),
+    );
+  });
+
+  it('suspend rejects a row outside the ADMIN scope tenant before writing anything', async () => {
+    const prisma = makePrismaMock();
+    prisma.user.findFirstOrThrow.mockRejectedValue(new Error('not found'));
+    const svc = new UsersService(prisma as any);
+    await expect(
+      svc.suspend('user-1', { role: Role.USER, tenantId: 'tenant-a' }),
+    ).rejects.toThrow('not found');
+    expect(prisma.user.findFirstOrThrow).toHaveBeenCalledWith({
+      where: { id: 'user-1', role: Role.USER, tenantId: 'tenant-a' },
     });
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it('create rejects a departmentId that does not belong to the resolved tenant', async () => {

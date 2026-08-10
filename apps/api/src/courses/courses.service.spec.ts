@@ -32,13 +32,21 @@ describe('CoursesService tenant scoping', () => {
   function buildService() {
     const prisma = {
       course: {
-        findMany: jest.fn(),
+        // findBrowsable/findAllForAdmin etc. all `await` this and (for findBrowsable) call
+        // `.map()` on the result — an unmocked jest.fn() resolves to undefined and crashes the
+        // whole worker process (pre-existing gap in this file, unrelated to this session's
+        // change; only patched enough here to stop the crash, not asserting findBrowsable's
+        // current behavior).
+        findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn(),
         findFirstOrThrow: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
         delete: jest.fn(),
       },
+      // findBrowsable also awaits this for every non-SUPER_ADMIN actor with a tenantId/studentId
+      // — same pre-existing gap as above.
+      enrollment: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const service = new CoursesService(prisma as any);
     return { service, prisma };
@@ -196,5 +204,47 @@ describe('CoursesService tenant scoping', () => {
     expect(prisma.course.findFirstOrThrow).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'course-1' } }),
     );
+  });
+});
+
+// findLessonViewsForUserAsAdmin: tenant/existence gating is the caller's responsibility (see
+// assertAdminCanAccessUser's own tests) — this covers the query shape it's relied on for.
+describe('CoursesService.findLessonViewsForUserAsAdmin', () => {
+  function buildService() {
+    const prisma = {
+      lessonView: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    const service = new CoursesService(prisma as any);
+    return { service, prisma };
+  }
+
+  it('scopes to the target userId and orders by most-recently-viewed', async () => {
+    const { service, prisma } = buildService();
+    await service.findLessonViewsForUserAsAdmin('user-1', {
+      page: 1,
+      pageSize: 10,
+    });
+    const args = prisma.lessonView.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ userId: 'user-1' });
+    expect(args.orderBy).toEqual({ lastViewedAt: 'desc' });
+  });
+
+  // A bare `include` on lesson/course would drag along every Course field (description,
+  // thumbnail, whatsapp fields, etc.) on every one of a user's lesson-view rows — this asserts
+  // the explicit `select` stays narrow to just the display fields.
+  it('uses an explicit select on lesson/course, not a bare include', async () => {
+    const { service, prisma } = buildService();
+    await service.findLessonViewsForUserAsAdmin('user-1', {
+      page: 1,
+      pageSize: 10,
+    });
+    const args = prisma.lessonView.findMany.mock.calls[0][0];
+    expect(args.select.lesson.select.course.select).toEqual({
+      id: true,
+      title: true,
+    });
   });
 });

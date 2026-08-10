@@ -24,9 +24,10 @@ type Enrollment = {
   tenant: { id: string; name: string } | null;
   series: { id: string; name: string } | null;
   course: { id: string; title: string; startDate: string | null; endDate: string | null } | null;
+  agent: { id: string; name: string } | null;
 };
 
-type ContentType = 'SERIES' | 'COURSE';
+type ContentType = 'SERIES' | 'COURSE' | 'AGENT';
 
 function authHeaders() {
   const token = localStorage.getItem('token');
@@ -46,6 +47,7 @@ function validateEnrollmentForm(
   contentType: ContentType,
   seriesId: string,
   courseId: string,
+  agentId: string,
 ) {
   if (!assignId) return { error: 'Please select a student or tenant', field: 'assignId' };
   if (contentType === 'SERIES' && !seriesId) {
@@ -54,7 +56,18 @@ function validateEnrollmentForm(
   if (contentType === 'COURSE' && !courseId) {
     return { error: 'Please select a course', field: 'assignCourseId' };
   }
+  if (contentType === 'AGENT' && !agentId) {
+    return { error: 'Please select an AI agent', field: 'assignAgentId' };
+  }
   return null;
+}
+
+// Derives which of the three targets a row actually has — replaces the old binary
+// `series !== null` ternary now that there's a third option.
+function targetTypeOf(enrollment: Pick<Enrollment, 'series' | 'course' | 'agent'>): ContentType {
+  if (enrollment.series) return 'SERIES';
+  if (enrollment.agent) return 'AGENT';
+  return 'COURSE';
 }
 
 export default function AdminEnrollmentsPage() {
@@ -71,6 +84,7 @@ export default function AdminEnrollmentsPage() {
   const [tenants, setTenants] = useState<{ value: string; label: string }[]>([]);
   const [seriesOptions, setSeriesOptions] = useState<{ value: string; label: string }[]>([]);
   const [courseOptions, setCourseOptions] = useState<{ value: string; label: string }[]>([]);
+  const [agentOptions, setAgentOptions] = useState<{ value: string; label: string }[]>([]);
   const [courseSearch, setCourseSearch] = useState('');
   const [debouncedCourseSearch, setDebouncedCourseSearch] = useState('');
 
@@ -80,6 +94,7 @@ export default function AdminEnrollmentsPage() {
   const [assignContentType, setAssignContentType] = useState<ContentType>('SERIES');
   const [assignSeriesId, setAssignSeriesId] = useState('');
   const [assignCourseId, setAssignCourseId] = useState('');
+  const [assignAgentId, setAssignAgentId] = useState('');
   const [assignExpiresAt, setAssignExpiresAt] = useState('');
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -87,6 +102,7 @@ export default function AdminEnrollmentsPage() {
   const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | null>(null);
   const [editSeriesId, setEditSeriesId] = useState('');
   const [editCourseId, setEditCourseId] = useState('');
+  const [editAgentId, setEditAgentId] = useState('');
   const [editExpiresAt, setEditExpiresAt] = useState('');
   const [editError, setEditError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -144,6 +160,14 @@ export default function AdminEnrollmentsPage() {
         setSeriesOptions(data.map((s) => ({ value: s.id, label: s.name }))),
       )
       .catch(() => {});
+    // Only series-less agents need a *direct* Enrollment — series-linked agents are already
+    // covered by their series' Enrollment.
+    fetch(`${apiUrl}/ai-agents?hasSeries=false&pageSize=1000`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((res: { data: { id: string; name: string }[] }) =>
+        setAgentOptions(res.data.map((a) => ({ value: a.id, label: a.name }))),
+      )
+      .catch(() => {});
   }, [user]);
 
   // Debounced server-side search — the course catalog can grow large over years of content, so
@@ -164,36 +188,49 @@ export default function AdminEnrollmentsPage() {
     {
       header: 'Student / Tenant',
       render: (enrollment) => (
-        <span className="font-medium text-slate-900">
-          {enrollment.student
-            ? (enrollment.student.user?.fullName ?? enrollment.student.user?.email)
-            : enrollment.tenant?.name}
-          <span
-            className={`ml-2 rounded-full px-2 py-0.5 text-xs font-normal ${
-              enrollment.student ? 'bg-teal-50 text-teal-700' : 'bg-blue-50 text-blue-700'
-            }`}
-          >
-            {enrollment.student ? 'Student' : 'Tenant'}
+        <div>
+          <span className="font-medium text-slate-900">
+            {enrollment.student
+              ? (enrollment.student.user?.fullName ?? enrollment.student.user?.email)
+              : enrollment.tenant?.name}
+            <span
+              className={`ml-2 rounded-full px-2 py-0.5 text-xs font-normal ${
+                enrollment.student ? 'bg-teal-50 text-teal-700' : 'bg-blue-50 text-blue-700'
+              }`}
+            >
+              {enrollment.student ? 'Student' : 'Tenant'}
+            </span>
           </span>
-        </span>
+          {enrollment.student?.user?.fullName && enrollment.student.user.email && (
+            <div className="text-xs text-slate-400">{enrollment.student.user.email}</div>
+          )}
+        </div>
       ),
     },
     {
-      header: 'Course / Series',
-      render: (enrollment) => (
-        <span>
-          {enrollment.series
-            ? enrollment.series.name
-            : courseLabel(enrollment.course!.title, enrollment.course!.startDate, enrollment.course!.endDate)}
-          <span
-            className={`ml-2 rounded-full px-2 py-0.5 text-xs font-normal ${
-              enrollment.series ? 'bg-indigo-50 text-indigo-700' : 'bg-amber-50 text-amber-700'
-            }`}
-          >
-            {enrollment.series ? 'Series' : 'Course'}
+      header: 'Course / Series / Agent',
+      render: (enrollment) => {
+        const targetType = targetTypeOf(enrollment);
+        const label =
+          targetType === 'SERIES'
+            ? enrollment.series!.name
+            : targetType === 'AGENT'
+              ? enrollment.agent!.name
+              : courseLabel(enrollment.course!.title, enrollment.course!.startDate, enrollment.course!.endDate);
+        const pillClass =
+          targetType === 'SERIES'
+            ? 'bg-indigo-50 text-indigo-700'
+            : targetType === 'AGENT'
+              ? 'bg-violet-50 text-violet-700'
+              : 'bg-amber-50 text-amber-700';
+        const pillLabel = targetType === 'SERIES' ? 'Series' : targetType === 'AGENT' ? 'AI Agent' : 'Course';
+        return (
+          <span>
+            {label}
+            <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-normal ${pillClass}`}>{pillLabel}</span>
           </span>
-        </span>
-      ),
+        );
+      },
     },
     {
       header: 'Expires At',
@@ -210,13 +247,20 @@ export default function AdminEnrollmentsPage() {
     setAssignContentType('SERIES');
     setAssignSeriesId('');
     setAssignCourseId('');
+    setAssignAgentId('');
     setAssignExpiresAt('');
     setCreateError('');
   };
 
   const createEnrollment = async (e: { preventDefault(): void }) => {
     e.preventDefault();
-    const validation = validateEnrollmentForm(assignId, assignContentType, assignSeriesId, assignCourseId);
+    const validation = validateEnrollmentForm(
+      assignId,
+      assignContentType,
+      assignSeriesId,
+      assignCourseId,
+      assignAgentId,
+    );
     if (validation) {
       setCreateError(validation.error);
       return;
@@ -231,6 +275,7 @@ export default function AdminEnrollmentsPage() {
         tenantId: assignType === 'TENANT' ? assignId : undefined,
         seriesId: assignContentType === 'SERIES' ? assignSeriesId : undefined,
         courseId: assignContentType === 'COURSE' ? assignCourseId : undefined,
+        agentId: assignContentType === 'AGENT' ? assignAgentId : undefined,
         expiresAt: assignExpiresAt || undefined,
       }),
     });
@@ -248,6 +293,7 @@ export default function AdminEnrollmentsPage() {
     setEditingEnrollment(enrollment);
     setEditSeriesId(enrollment.series?.id ?? '');
     setEditCourseId(enrollment.course?.id ?? '');
+    setEditAgentId(enrollment.agent?.id ?? '');
     // Seed the picker so the currently-assigned course shows its label immediately, before any
     // debounced search re-fetches and potentially narrows courseOptions away from it.
     const course = enrollment.course;
@@ -270,13 +316,17 @@ export default function AdminEnrollmentsPage() {
   const saveEnrollment = async (e: { preventDefault(): void }) => {
     e.preventDefault();
     if (!editingEnrollment) return;
-    const isSeries = editingEnrollment.series !== null;
-    if (isSeries && !editSeriesId) {
+    const targetType = targetTypeOf(editingEnrollment);
+    if (targetType === 'SERIES' && !editSeriesId) {
       setEditError('Please select a course series');
       return;
     }
-    if (!isSeries && !editCourseId) {
+    if (targetType === 'COURSE' && !editCourseId) {
       setEditError('Please select a course');
+      return;
+    }
+    if (targetType === 'AGENT' && !editAgentId) {
+      setEditError('Please select an AI agent');
       return;
     }
     setIsSaving(true);
@@ -285,8 +335,9 @@ export default function AdminEnrollmentsPage() {
       method: 'PATCH',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        seriesId: isSeries ? editSeriesId : undefined,
-        courseId: isSeries ? undefined : editCourseId,
+        seriesId: targetType === 'SERIES' ? editSeriesId : undefined,
+        courseId: targetType === 'COURSE' ? editCourseId : undefined,
+        agentId: targetType === 'AGENT' ? editAgentId : undefined,
         expiresAt: editExpiresAt || undefined,
       }),
     });
@@ -344,7 +395,7 @@ export default function AdminEnrollmentsPage() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Search by student, tenant, course series, or course..."
+              placeholder="Search by student, email, tenant, course series, or course..."
               value={search}
             />
           </div>
@@ -381,14 +432,16 @@ export default function AdminEnrollmentsPage() {
               setAssignContentType(value as ContentType);
               setAssignSeriesId('');
               setAssignCourseId('');
+              setAssignAgentId('');
             }}
             options={[
               { label: 'Course Series', value: 'SERIES' },
               { label: 'Individual Course', value: 'COURSE' },
+              { label: 'AI Agent', value: 'AGENT' },
             ]}
             value={assignContentType}
           />
-          {assignContentType === 'SERIES' ? (
+          {assignContentType === 'SERIES' && (
             <SearchableSelect
               id="assignSeriesId"
               label="Course Series"
@@ -397,7 +450,8 @@ export default function AdminEnrollmentsPage() {
               required
               value={assignSeriesId}
             />
-          ) : (
+          )}
+          {assignContentType === 'COURSE' && (
             <SearchableSelect
               id="assignCourseId"
               label="Individual Course"
@@ -406,6 +460,16 @@ export default function AdminEnrollmentsPage() {
               options={courseOptions}
               required
               value={assignCourseId}
+            />
+          )}
+          {assignContentType === 'AGENT' && (
+            <SearchableSelect
+              id="assignAgentId"
+              label="AI Agent"
+              onChange={setAssignAgentId}
+              options={agentOptions}
+              required
+              value={assignAgentId}
             />
           )}
           <Input
@@ -438,7 +502,7 @@ export default function AdminEnrollmentsPage() {
                 : (editingEnrollment?.tenant?.name ?? '')
             }
           />
-          {editingEnrollment?.series ? (
+          {editingEnrollment && targetTypeOf(editingEnrollment) === 'SERIES' && (
             <SearchableSelect
               id="editSeriesId"
               label="Course Series"
@@ -447,7 +511,8 @@ export default function AdminEnrollmentsPage() {
               required
               value={editSeriesId}
             />
-          ) : (
+          )}
+          {editingEnrollment && targetTypeOf(editingEnrollment) === 'COURSE' && (
             <SearchableSelect
               id="editCourseId"
               label="Individual Course"
@@ -456,6 +521,16 @@ export default function AdminEnrollmentsPage() {
               options={courseOptions}
               required
               value={editCourseId}
+            />
+          )}
+          {editingEnrollment && targetTypeOf(editingEnrollment) === 'AGENT' && (
+            <SearchableSelect
+              id="editAgentId"
+              label="AI Agent"
+              onChange={setEditAgentId}
+              options={agentOptions}
+              required
+              value={editAgentId}
             />
           )}
           <Input

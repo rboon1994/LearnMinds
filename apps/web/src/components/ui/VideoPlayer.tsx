@@ -8,13 +8,34 @@ import 'video.js/dist/video-js.css';
 type VideoPlayerProps = {
   src: string;
   type?: string;
+  // Fired once per genuine watch session — 5s of continuous playback, not just clicking play.
+  // Stored in a ref (not an effect dependency) so passing a new closure every render doesn't
+  // tear down and re-attach the player's play/pause listeners mid-playback.
+  onWatched?: () => void;
 };
 
 // Video.js recommended React integration: create the <video-js> element imperatively once,
 // then update its source on prop changes instead of re-creating the player each render.
-export function VideoPlayer({ src, type = 'video/mp4' }: VideoPlayerProps) {
+export function VideoPlayer({ src, type = 'video/mp4', onWatched }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Player | null>(null);
+  const onWatchedRef = useRef(onWatched);
+  const watchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasWatchedRef = useRef(false);
+  onWatchedRef.current = onWatched;
+
+  const clearWatchTimer = () => {
+    if (watchTimerRef.current) {
+      clearTimeout(watchTimerRef.current);
+      watchTimerRef.current = null;
+    }
+  };
+
+  const markWatched = () => {
+    if (hasWatchedRef.current) return;
+    hasWatchedRef.current = true;
+    onWatchedRef.current?.();
+  };
 
   useEffect(() => {
     if (!playerRef.current) {
@@ -47,13 +68,33 @@ export function VideoPlayer({ src, type = 'video/mp4' }: VideoPlayerProps) {
         },
         sources: [{ src, type }],
       });
+
+      const player = playerRef.current;
+      // Not listening for 'seeking'/'seeked' is deliberate: a viewer scrubbing through a long
+      // video is still watching it, and resetting the timer on every seek would mean someone
+      // skimming a 30-minute video by jumping every few seconds could genuinely watch for
+      // minutes and never once cross the 5s threshold.
+      player.on('play', () => {
+        clearWatchTimer();
+        watchTimerRef.current = setTimeout(markWatched, 5000);
+      });
+      player.on('pause', clearWatchTimer);
+      // A video shorter than the 5s threshold reaches 'ended' before the timer fires — count
+      // a full playthrough as watched instead of letting clearWatchTimer silently drop it.
+      player.on('ended', () => {
+        clearWatchTimer();
+        markWatched();
+      });
     } else {
+      clearWatchTimer();
+      hasWatchedRef.current = false;
       playerRef.current.src([{ src, type }]);
     }
   }, [src, type]);
 
   useEffect(() => {
     return () => {
+      clearWatchTimer();
       const player = playerRef.current;
       if (player && !player.isDisposed()) {
         player.dispose();

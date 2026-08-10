@@ -24,6 +24,8 @@ type Agent = {
   name: string;
   description: string | null;
   thumbnail: string | null;
+  status: 'DRAFT' | 'PUBLISHED';
+  hasAccess: boolean;
 };
 
 export default function AgentsPage() {
@@ -89,8 +91,15 @@ export default function AgentsPage() {
             {filteredAgents.map((agent) => (
               <div
                 key={agent.id}
-                className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-3"
+                className={`relative rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-3 ${
+                  agent.hasAccess ? '' : 'opacity-60'
+                }`}
               >
+                {!agent.hasAccess && (
+                  <div className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-black/50 backdrop-blur-sm">
+                    <Icon name="lock" className="w-4 h-4 text-white" />
+                  </div>
+                )}
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center shrink-0 overflow-hidden">
                     {agent.thumbnail ? (
@@ -101,18 +110,29 @@ export default function AgentsPage() {
                     )}
                   </div>
                   <h3 className="font-semibold text-slate-900">{agent.name}</h3>
+                  {agent.status === 'DRAFT' && (
+                    <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-xs font-medium text-white">
+                      Draft
+                    </span>
+                  )}
                 </div>
                 {agent.description && (
                   <p className="text-sm text-slate-500 line-clamp-3">{agent.description}</p>
                 )}
-                <Button
-                  onClick={() => startChat(agent.id)}
-                  isLoading={startingId === agent.id}
-                  loadingLabel="Starting..."
-                  className="mt-auto"
-                >
-                  Start Chat
-                </Button>
+                {agent.hasAccess ? (
+                  <Button
+                    onClick={() => startChat(agent.id)}
+                    isLoading={startingId === agent.id}
+                    loadingLabel="Starting..."
+                    className="mt-auto"
+                  >
+                    Start Chat
+                  </Button>
+                ) : (
+                  <Button disabled className="mt-auto">
+                    Locked
+                  </Button>
+                )}
               </div>
             ))}
           </div>

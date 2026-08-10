@@ -33,6 +33,7 @@ export class AiAgentsService {
         ? { name: { contains: query.search, mode: 'insensitive' } }
         : {}),
       ...(query.status ? { status: query.status } : {}),
+      ...(query.hasSeries === 'false' ? { seriesId: null } : {}),
     };
     const result = await paginate<
       AiAgentWithRelations,

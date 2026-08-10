@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { VideoType } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import type { Actor } from './courses.service';
@@ -129,5 +130,34 @@ export class LessonsService {
       );
     }
     return { path: this.storage.resolvePath(lesson.videoUrl) };
+  }
+
+  // Records that `actor` actually opened this lesson's video (Enrollment only proves access
+  // was granted, not that anyone watched). Reuses the same visibility/ownership check as
+  // getStreamableVideo so a view can't be fabricated for a lesson the actor can't see.
+  //
+  // viewCount/lastViewedAt only move together, atomically, when the last recorded view is
+  // more than 10s old — otherwise a burst of near-simultaneous calls (retries, concurrent
+  // tabs) could each read a stale lastViewedAt and double-count. Doing the throttle decision
+  // inside the single INSERT..ON CONFLICT statement (rather than a separate read-then-write)
+  // is what makes it atomic; letting lastViewedAt advance only on the same branch that
+  // increments viewCount is what keeps the 10s window from sliding forward on every throttled
+  // call (which would otherwise leave viewCount stuck near 1 under steady polling).
+  async recordView(courseId: string, lessonId: string, actor: Actor) {
+    await this.courses.assertVisible(courseId, actor);
+    await this.prisma.lesson.findFirstOrThrow({
+      where: { id: lessonId, courseId },
+    });
+    await this.prisma.$executeRaw`
+      INSERT INTO "LessonView" (id, "userId", "lessonId", "viewCount", "firstViewedAt", "lastViewedAt")
+      VALUES (${randomUUID()}, ${actor.userId}, ${lessonId}, 1, now(), now())
+      ON CONFLICT ("userId", "lessonId") DO UPDATE SET
+        "viewCount" = CASE
+          WHEN now() - "LessonView"."lastViewedAt" > interval '10 seconds' THEN "LessonView"."viewCount" + 1
+          ELSE "LessonView"."viewCount" END,
+        "lastViewedAt" = CASE
+          WHEN now() - "LessonView"."lastViewedAt" > interval '10 seconds' THEN now()
+          ELSE "LessonView"."lastViewedAt" END
+    `;
   }
 }

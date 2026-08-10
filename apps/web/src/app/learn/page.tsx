@@ -182,7 +182,7 @@ export default function LearnPage() {
 
       <div className="flex-1 min-w-0 flex flex-col">
         <PageHeader
-          defaultTitle="Super Admin Panel"
+          defaultTitle="Learning Platform"
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
         >
           {/* Search + filter bar */}

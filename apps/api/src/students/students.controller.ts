@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   Patch,
@@ -44,13 +43,13 @@ export class StudentsController {
     return this.svc.update(id, dto);
   }
 
-  @Delete(':id')
-  delete(@Param('id') id: string) {
-    return this.svc.delete(id);
-  }
-
   @Patch(':id/reset-password')
   resetPassword(@Param('id') id: string) {
     return this.svc.resetPassword(id);
+  }
+
+  @Patch(':id/suspend')
+  suspend(@Param('id') id: string) {
+    return this.svc.suspend(id);
   }
 }

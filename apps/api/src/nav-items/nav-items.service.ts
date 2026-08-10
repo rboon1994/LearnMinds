@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DepartmentsService } from '../departments/departments.service';
 import type { UpsertNavItemDto } from './dto/upsert-nav-item.dto';
@@ -15,10 +19,15 @@ export class NavItemsService {
   }
 
   async reorder(ids: string[]) {
-    const existing = await this.prisma.navItem.count({ where: { id: { in: ids } } });
-    if (existing !== ids.length) throw new BadRequestException('One or more nav item ids do not exist');
+    const existing = await this.prisma.navItem.count({
+      where: { id: { in: ids } },
+    });
+    if (existing !== ids.length)
+      throw new BadRequestException('One or more nav item ids do not exist');
     return this.prisma.$transaction(
-      ids.map((id, order) => this.prisma.navItem.update({ where: { id }, data: { order } })),
+      ids.map((id, order) =>
+        this.prisma.navItem.update({ where: { id }, data: { order } }),
+      ),
     );
   }
 

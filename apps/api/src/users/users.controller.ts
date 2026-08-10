@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Body,
   Controller,
-  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -90,16 +89,16 @@ export class UsersController {
     return this.svc.update(id, dto, this.scopeFilter(req));
   }
 
-  @Delete(':id')
-  @RequireFeature('user-management')
-  delete(@Param('id') id: string, @Request() req: AuthReq) {
-    return this.svc.delete(id, this.scopeFilter(req));
-  }
-
   @Patch(':id/reset-password')
   @RequireFeature('user-management')
   resetPassword(@Param('id') id: string, @Request() req: AuthReq) {
     return this.svc.resetPassword(id, this.scopeFilter(req));
+  }
+
+  @Patch(':id/suspend')
+  @RequireFeature('user-management')
+  suspend(@Param('id') id: string, @Request() req: AuthReq) {
+    return this.svc.suspend(id, this.scopeFilter(req));
   }
 
   private scopeFilter(req: AuthReq): ScopeFilter {

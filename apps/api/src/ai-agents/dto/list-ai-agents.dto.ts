@@ -19,4 +19,11 @@ export class ListAiAgentsDto extends PaginationQueryDto {
   @IsIn(['asc', 'desc'])
   @IsOptional()
   sortDir?: 'asc' | 'desc';
+
+  // Boolean-as-string, matching CourseSeriesQueryDto.hasCourses's convention — used by the
+  // Enrollments admin page to list only series-less agents (only those need a *direct*
+  // Enrollment; series-linked agents are covered by their series' Enrollment already).
+  @IsIn(['true', 'false'])
+  @IsOptional()
+  hasSeries?: 'true' | 'false';
 }

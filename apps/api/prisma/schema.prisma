@@ -52,6 +52,11 @@ enum AgentMessageRole {
   ASSISTANT
 }
 
+enum AgentAttachmentType {
+  DOCUMENT
+  IMAGE
+}
+
 model Tenant {
   id           String         @id @default(cuid())
   name         String
@@ -90,6 +95,7 @@ model User {
   coursesCreated     Course[]
   enrollmentsGranted Enrollment[]
   agentConversations AgentConversation[]
+  lessonViews        LessonView[]
 }
 
 // Thin satellite for the Student "flavor" of a User row (role: STUDENT, tenantId: null) —
@@ -212,8 +218,28 @@ model Lesson {
   durationSeconds Int?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  views           LessonView[]
 
   @@index([courseId])
+}
+
+// Records that a user actually opened/watched a lesson's video (vs. Enrollment, which only
+// proves access was granted). viewCount/lastViewedAt are only ever moved by the throttled
+// upsert in LessonsService — lastViewedAt is intentionally NOT @updatedAt so nothing else
+// can silently bump it and bypass that throttle.
+model LessonView {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId      String
+  lesson        Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  viewCount     Int      @default(1)
+  firstViewedAt DateTime @default(now()) @db.Timestamptz(3)
+  lastViewedAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([userId, lessonId])
+  @@index([userId, lastViewedAt])
+  @@index([lessonId])
 }
 
 model CourseFile {
@@ -242,6 +268,8 @@ model Enrollment {
   series       CourseSeries? @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   courseId     String?
   course       Course?       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  agentId      String?
+  agent        AiAgent?      @relation(fields: [agentId], references: [id], onDelete: Cascade)
   studentId    String?
   student      Student?      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   tenantId     String?
@@ -255,10 +283,15 @@ model Enrollment {
   @@unique([seriesId, tenantId])
   @@unique([courseId, studentId])
   @@unique([courseId, tenantId])
+  @@unique([agentId, studentId])
+  @@unique([agentId, tenantId])
   @@index([courseId])
+  @@index([agentId])
   @@index([studentId])
   @@index([tenantId])
   @@index([seriesId])
+  @@index([studentId, expiresAt])
+  @@index([tenantId, expiresAt])
 }
 
 // Platform-wide LLM model catalog (pricing/limits), SUPER_ADMIN-managed like CourseSeries.
@@ -297,6 +330,7 @@ model AiAgent {
   knowledgeBaseId String?
   knowledgeBase   KnowledgeBase?      @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
   conversations   AgentConversation[]
+  enrollments     Enrollment[]
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
@@ -338,17 +372,22 @@ model KnowledgeBaseFile {
 
 // No uniqueness on (agentId, userId) — a user can open multiple separate threads with the same agent.
 model AgentConversation {
-  id        String         @id @default(cuid())
-  agentId   String
-  agent     AiAgent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String?
-  messages  AgentMessage[]
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  agentId       String
+  agent         AiAgent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String?
+  // Lazily created the first time a document is attached to a message in this conversation —
+  // isolated per-conversation so an attached file never leaks into a different thread (even a
+  // New Chat with the same agent), and never touches the shared AiAgent-level KnowledgeBase.
+  vectorStoreId String?
+  messages      AgentMessage[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@index([agentId, userId])
+  @@index([userId])
 }
 
 model AgentMessage {
@@ -357,7 +396,36 @@ model AgentMessage {
   conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role           AgentMessageRole
   content        String            @db.Text
+  attachments    AgentAttachment[]
+  // Only ever set on ASSISTANT messages — the OpenAI completion call is what has a token/cost
+  // cost; the USER message that triggered it doesn't. costUsd is computed once at send time from
+  // AiAgentModel's per-1M-token prices, not recomputed later if those prices change afterward.
+  inputTokens    Int?
+  outputTokens   Int?
+  // Number of file_search tool invocations OpenAI billed for this turn ($2.50/1000 calls,
+  // hardcoded in agent-chat.service.ts — not a configurable AiAgentModel price like token
+  // costs, since it's a flat platform-wide rate, not model-specific). Already folded into costUsd.
+  fileSearchCalls Int?
+  costUsd        Decimal?          @db.Decimal(10, 6)
   createdAt      DateTime          @default(now())
 
   @@index([conversationId])
+}
+
+// Documents sync to the conversation's vectorStoreId for file_search grounding (openaiFileId
+// set); images never go through the Files API at all — they're read from local disk and sent
+// inline as vision input only on the turn they're uploaded (openaiFileId stays null).
+model AgentAttachment {
+  id           String              @id @default(cuid())
+  messageId    String
+  message      AgentMessage        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  type         AgentAttachmentType
+  fileName     String
+  fileUrl      String
+  mimeType     String
+  sizeBytes    Int
+  openaiFileId String?
+  createdAt    DateTime            @default(now())
+
+  @@index([messageId])
 }

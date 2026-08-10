@@ -1,5 +1,9 @@
 # Claude Code Instructions — LearnMinds SaaS
 
+## Language (Hard Rule)
+
+Always respond to the user in **Chinese (中文)** — regardless of the language of the user's message, code, file contents, or any other context. Code, commands, file paths, and error messages stay in their original form; only the surrounding explanation/prose must be Chinese.
+
 ## Project Context
 SaaS Multi-tenant LMS platform: **Next.js (apps/web) + NestJS (apps/api) + PostgreSQL + Prisma + JWT**.
 Monorepo: **pnpm workspaces + Turborepo**. `packages/ai-core` and `packages/shared-types` exist but are empty stubs.
@@ -9,14 +13,15 @@ Monorepo: **pnpm workspaces + Turborepo**. `packages/ai-core` and `packages/shar
 | Feature | Status |
 |---|---|
 | Auth (register/login, JWT, RBAC, tenant/department admin) | ✅ Built — `apps/api/src/auth`, `apps/api/src/departments` |
-| Tenant isolation | ⚠️ Partial — `User.tenantId` is **nullable**, no global tenant-scoping guard. Only `AdminFeatureGuard` checks tenant on specific routes. |
+| AI Agent Chat (multi-agent, RAG, file/image attachments) | ✅ Built — `apps/api/src/agent-chat`, `apps/api/src/openai`. Models: `AiAgent`, `AiAgentModel`, `KnowledgeBase(File)`, `AgentConversation`, `AgentMessage`, `AgentAttachment` |
+| RAG | ✅ Built — but via **OpenAI native Vector Store + `file_search`** (`openai.service.ts`), not LlamaIndex. `packages/ai-core` is still an empty stub and unused. |
+| Tenant isolation | ⚠️ Partial — `User.tenantId` is **nullable with no global tenant-scoping guard** (real gap). `AiAgent.tenantId` is also nullable but **by design** — `null` = platform-wide shared agent, not a bug. Only `AdminFeatureGuard` checks tenant on specific routes. |
 | Workflow engine | ❌ Not started — no `WorkflowRun` model, no code anywhere, despite being a target feature |
 | Stripe / Billing | ❌ Not started — UI placeholder only (`apps/web/.../admin/billing`), no backend, no webhook handlers |
-| LlamaIndex / RAG | ❌ Not started — `packages/ai-core` is an empty TS stub, no dependency installed |
-| Tests | ❌ None — Jest is configured in `apps/api` but zero `.spec.ts` files exist anywhere, including for the shipped Auth module |
+| Tests | ❌ None — Jest is configured in `apps/api` but zero `.spec.ts` files exist anywhere, including for the shipped Auth and Agent Chat modules |
 | CI | ❌ None — no `.github/workflows` or any pipeline config |
 
-Do not assume Stripe/LlamaIndex/Workflow code exists when answering — those sections below are **forward guardrails for when that code is written**, not descriptions of current behavior.
+Do not assume Stripe/Workflow code exists, and do not assume RAG means LlamaIndex — those sections below are **forward guardrails for when that code is written**, not descriptions of current behavior.
 
 ---
 
@@ -61,7 +66,7 @@ This section is the result of a full audit (2026-07-03) — don't redo this anal
 | `planning-with-files` | Tasks spanning >3 files or >1 session |
 | `ruflo-migrations` | Any Prisma schema change — generates up/down pair with dry-run |
 | `ruflo-testgen` | Core business logic: billing, tenant isolation, workflow engine; also any existing untested module being touched |
-| `ruflo-rag-memory` | LlamaIndex retrieval optimization, hybrid search (once started) |
+| `ruflo-rag-memory` | Optimizing the existing OpenAI vector-store/file_search retrieval, or hybrid search — not LlamaIndex-specific |
 | `ruflo-ddd` | Designing new domain entities / bounded contexts |
 | `ruflo-observability` | Adding structured logging, tracing, or debugging production |
 | `ruflo-adr` | Recording an architecture decision (mirrors the existing `task_plan.md`/`findings.md` pattern) |
@@ -170,15 +175,15 @@ Context7 MCP (docs first — always, even for "known" libraries)
   → deep-research skill (only if Context7 doesn't have it)
 ```
 
-### 9. LlamaIndex & RAG Tasks (not yet started — see status table)
+### 9. RAG / Agent Chat Tasks (built — via OpenAI native Vector Store, not LlamaIndex)
 ```
 Reason through token usage, retrieval chain, and cost estimate before writing code
-  → Context7 MCP (look up current LlamaIndex API docs)
-  → Grep (check existing vector store/embedding configs — likely none yet)
-  → ruflo-rag-memory skill (if optimizing retrieval or adding hybrid search)
-  → ruflo-cost-tracker skill (track actual spend once live)
+  → Grep `apps/api/src/openai/openai.service.ts` and `apps/api/src/agent-chat/agent-chat.service.ts` first — reuse the existing vector-store/file_search pattern, don't reinvent it
+  → Context7 MCP (OpenAI API docs — Responses API, vector stores, file_search — this is NOT LlamaIndex)
+  → ruflo-cost-tracker skill (track actual spend — real API calls now, not hypothetical)
 ```
-> **RAG Safety Guardrail:** Before any LlamaIndex change, explicitly reason through end-to-end token consumption and vector retrieval routing to prevent infinite RAG loops and accidental API budget depletion.
+> **RAG Safety Guardrail:** Before any change to vector-store/file_search logic, explicitly reason through end-to-end token consumption and retrieval routing to prevent infinite RAG loops and accidental API budget depletion. This applies now — it's live, not a future guardrail.
+> **If LlamaIndex work is proposed instead:** confirm first whether it's meant to replace or sit alongside the existing OpenAI-native RAG — don't assume `packages/ai-core` is the intended home without asking, since a working alternative already exists.
 
 ### 10. Domain Modelling (new Course / Enrollment / Subscription entities)
 ```
@@ -195,12 +200,24 @@ ruflo-observability skill (structured logging + distributed tracing)
   → reason through the incident step by step before acting
 ```
 
+### 12. AI Agent Chat (conversations, messages, attachments)
+```
+Grep `agent-chat.service.ts` for the existing pattern before adding a new endpoint/field
+  → ruflo-testgen skill (this module has zero tests — same debt as Auth)
+  → security-review skill (attachment downloads must stay ownership-checked, never a bare static path)
+```
+> **Established patterns to reuse, not reinvent:**
+> - Authenticated file download: check ownership through the owning relation (e.g. `message: { conversation: { userId } }`), never serve a bare static file path — mirrors `CourseFilesService.getDownloadable`.
+> - On a failed OpenAI call: roll back the just-created DB row and delete any OpenAI-side resources (files, vector stores) created this turn — never leave an orphaned turn or leaked OpenAI resource.
+> - Multer file uploads: clean up local disk files in every failure branch (`cleanupLocalFiles`), not just the happy path.
+
 ---
 
 ## Tenant Isolation (Hard Rule)
 
 - Every Prisma query touching tenant-scoped models (`User`, `Department`, future `Course`/`Enrollment`) **must** filter by `tenantId`.
 - `tenantId` on `User` is currently nullable in schema — treat any code path that allows a `null` tenantId outside of `SUPER_ADMIN` role as a bug, not a valid state.
+- **Exception:** `AiAgent.tenantId = null` is intentional — it marks a platform-wide agent visible to every tenant (see `findPublishedAgents`). Do not "fix" this by making it required; a tenant-scoped agent is a separate, valid, non-null case.
 - Prefer injecting `tenantId` via a NestJS request-scoped provider (AsyncLocalStorage or `REQUEST`) over passing it manually through every service method signature.
 - No repository/service method may build a Prisma `where` clause without `tenantId` unless explicitly reviewed under `security-review`.
 
@@ -215,6 +232,7 @@ ruflo-observability skill (structured logging + distributed tracing)
 - **Validation:** all external input (API endpoints, env vars) must use **Zod** or `class-validator` DTOs — no ad-hoc `if` checks
 - **API responses:** consistent shape across NestJS controllers — never naked objects mixed with raw throws
 - **File naming:** kebab-case files, PascalCase components, camelCase utils
+- **Authenticated file downloads:** always check ownership through the owning relation in the query itself, never serve a bare static file path (see `AgentChatService.getAttachmentDownload` / `CourseFilesService.getDownloadable`)
 
 ## Common Commands
 
@@ -235,3 +253,4 @@ ruflo-observability skill (structured logging + distributed tracing)
 5. **Ponytail is always on.** Shortest working diff wins. YAGNI, always.
 6. **No claiming a feature works** (Stripe, LlamaIndex, Workflow engine) without checking the Current vs Planned table first.
 7. **Disclose tool usage** — one line per action, per the Tool Usage Disclosure rule above.
+8. **Always respond in Chinese** — regardless of input language; code/commands/paths stay unchanged.

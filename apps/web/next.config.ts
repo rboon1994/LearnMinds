@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["192.168.100.226"],
+  // For LAN access (e.g. testing from phone) — update IP to match your machine's current LAN IP, then uncomment:
+  // allowedDevOrigins: ["192.168.100.226"],
   async rewrites() {
     return [
       {

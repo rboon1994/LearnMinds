@@ -9,7 +9,7 @@ import type { UpdateUserDto } from './dto/update-user.dto';
 import type { UsersQueryDto } from './dto/users-query.dto';
 import { UserScope } from './dto/user-scope.enum';
 
-// null = caller is SUPER_ADMIN — may act on any role=USER or role=SUPER_ADMIN row.
+// null = caller is SUPER_ADMIN — may act on any role=USER, role=SUPER_ADMIN, or role=ADMIN row.
 // non-null = caller is ADMIN — forced to role=USER rows within their own tenantId.
 export type ScopeFilter = { role: Role; tenantId: string } | null;
 
@@ -25,6 +25,7 @@ const selectFields = {
   departmentId: true,
   department: { select: { id: true, name: true } },
   lastSignInAt: true,
+  _count: { select: { agentConversations: true, lessonViews: true } },
 } as const;
 
 @Injectable()
@@ -34,11 +35,23 @@ export class UsersService {
   async findAll(query: UsersQueryDto, tenantId: string | null) {
     const search = query.search?.trim();
     const searchDigits = search?.replace(/\D/g, '');
-    const role =
-      query.scope === UserScope.PLATFORM ? Role.SUPER_ADMIN : Role.USER;
     const where: Prisma.UserWhereInput = {
-      role,
-      tenantId: query.scope === UserScope.PLATFORM ? null : tenantId,
+      // Platform Admins tab spans every tenant (Super Admins + every tenant's Tenant Admin),
+      // so it applies no tenantId filter at all — unlike Tenant Users, which is always scoped
+      // to the one tenant being viewed. query.role narrows Super Admin vs Tenant Admin within
+      // that tab (unset means "both"); it's ignored for scope=tenant (always role=USER there)
+      // and matches nothing if it's ever anything other than SUPER_ADMIN/ADMIN, rather than
+      // silently widening to "all" the way an unset role does.
+      ...(query.scope === UserScope.PLATFORM
+        ? {
+            role:
+              query.role == null
+                ? { in: [Role.SUPER_ADMIN, Role.ADMIN] }
+                : query.role === Role.SUPER_ADMIN || query.role === Role.ADMIN
+                  ? query.role
+                  : { in: [] },
+          }
+        : { role: Role.USER, tenantId }),
       ...(search
         ? {
             OR: [
@@ -53,6 +66,7 @@ export class UsersService {
             ],
           }
         : {}),
+      ...(query.status ? { status: query.status } : {}),
     };
     return paginate<
       Prisma.UserGetPayload<{ select: typeof selectFields }>,
@@ -113,7 +127,7 @@ export class UsersService {
     return this.prisma.user.findFirstOrThrow({
       where: scope
         ? { id, role: scope.role, tenantId: scope.tenantId }
-        : { id, role: { in: [Role.USER, Role.SUPER_ADMIN] } },
+        : { id, role: { in: [Role.USER, Role.SUPER_ADMIN, Role.ADMIN] } },
     });
   }
 
@@ -158,9 +172,16 @@ export class UsersService {
     }
   }
 
-  async delete(id: string, scope: ScopeFilter) {
+  // The only manual status transition an admin can make. Un-suspending goes through
+  // resetPassword instead of a direct status write — ACTIVE is never admin-settable, only
+  // reachable by the account holder actually logging in and changing their password.
+  async suspend(id: string, scope: ScopeFilter) {
     await this.findOneScoped(id, scope);
-    await this.prisma.user.delete({ where: { id } });
+    return this.prisma.user.update({
+      where: { id },
+      data: { status: Status.SUSPENDED },
+      select: selectFields,
+    });
   }
 
   async resetPassword(id: string, scope: ScopeFilter) {

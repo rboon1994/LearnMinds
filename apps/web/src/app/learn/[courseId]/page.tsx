@@ -6,6 +6,7 @@ import { Navigation } from '@/components/layout/Navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Icon } from '@/components/ui/Icon';
 import { VideoPlayer } from '@/components/ui/VideoPlayer';
+import { VimeoPlayer } from '@/components/ui/VimeoPlayer';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
 import { formatDateRange, formatDuration } from '@/lib/duration';
@@ -41,6 +42,15 @@ function authHeaders() {
 
 function initials(name: string) {
   return name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+}
+
+// Fire-and-forget: recording a view is best-effort telemetry, never a reason to block or
+// interrupt playback.
+function recordLessonView(courseId: string, lessonId: string) {
+  fetch(`${apiUrl}/courses/${courseId}/lessons/${lessonId}/view`, {
+    method: 'POST',
+    headers: authHeaders(),
+  }).catch(() => {});
 }
 
 // Downloads are fetched as blobs (not a plain <a href>) so the Authorization header the
@@ -129,25 +139,41 @@ export default function CourseDetailPage() {
                   now renders with square corners instead of matching the rounded-xl container. */}
               <div className="relative aspect-[15/9] lg:aspect-video bg-black rounded-xl mb-4">
                 {activeLesson?.videoType === 'UPLOAD' && videoSrc && (
-                  <VideoPlayer src={videoSrc.url} type={videoSrc.type || undefined} />
-                )}
-                {activeLesson?.videoType === 'EXTERNAL_LINK' && activeLesson.videoUrl && (
-                  // ponytail: plays inline via iframe (no new window) rather than routing through
-                  // Video.js, which only plays direct video files, not third-party watch pages.
-                  // Assumes the pasted link is already embed-friendly (e.g. player.vimeo.com/video/…);
-                  // add per-provider URL rewriting later if editors paste plain watch-page links.
-                  // rounded-xl + overflow-hidden go on the iframe itself, not the shared ancestor
-                  // above (that div must stay overflow-visible for the Video.js touch fix) — an
-                  // iframe is a single opaque element/compositing boundary to the parent page, so
-                  // clipping it here can't cause the two-separately-composited-layers hit-testing
-                  // bug that overflow-hidden causes for Video.js's <video> + control bar pair.
-                  <iframe
-                    src={activeLesson.videoUrl}
-                    className="absolute inset-0 w-full h-full rounded-xl overflow-hidden"
-                    allow="autoplay; fullscreen; picture-in-picture"
-                    allowFullScreen
+                  <VideoPlayer
+                    src={videoSrc.url}
+                    type={videoSrc.type || undefined}
+                    onWatched={() => recordLessonView(course.id, activeLesson.id)}
                   />
                 )}
+                {activeLesson?.videoType === 'EXTERNAL_LINK' &&
+                  activeLesson.videoUrl &&
+                  (activeLesson.videoUrl.includes('vimeo.com') ? (
+                    // Vimeo's Player SDK talks to the embed over postMessage, so play/pause can
+                    // be observed despite the iframe being cross-origin — that's what makes view
+                    // tracking possible for Vimeo specifically, unlike an arbitrary embed below.
+                    <VimeoPlayer
+                      url={activeLesson.videoUrl}
+                      onWatched={() => recordLessonView(course.id, activeLesson.id)}
+                    />
+                  ) : (
+                    // ponytail: plays inline via iframe (no new window) rather than routing through
+                    // Video.js, which only plays direct video files, not third-party watch pages.
+                    // Assumes the pasted link is already embed-friendly (e.g. player.vimeo.com/video/…);
+                    // add per-provider URL rewriting later if editors paste plain watch-page links.
+                    // No view tracking here — a non-Vimeo third-party iframe is cross-origin with
+                    // no SDK access, so play/pause can't be observed.
+                    // rounded-xl + overflow-hidden go on the iframe itself, not the shared ancestor
+                    // above (that div must stay overflow-visible for the Video.js touch fix) — an
+                    // iframe is a single opaque element/compositing boundary to the parent page, so
+                    // clipping it here can't cause the two-separately-composited-layers hit-testing
+                    // bug that overflow-hidden causes for Video.js's <video> + control bar pair.
+                    <iframe
+                      src={activeLesson.videoUrl}
+                      className="absolute inset-0 w-full h-full rounded-xl overflow-hidden"
+                      allow="autoplay; fullscreen; picture-in-picture"
+                      allowFullScreen
+                    />
+                  ))}
                 {!activeLesson && (
                   <p className="absolute inset-0 flex items-center justify-center text-white/60">No lessons yet.</p>
                 )}

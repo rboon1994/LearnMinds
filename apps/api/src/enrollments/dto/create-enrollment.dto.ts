@@ -11,6 +11,10 @@ export class CreateEnrollmentDto {
 
   @IsString()
   @IsOptional()
+  agentId?: string;
+
+  @IsString()
+  @IsOptional()
   studentId?: string;
 
   @IsString()

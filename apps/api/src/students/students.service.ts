@@ -24,6 +24,7 @@ const selectFields = {
   status: true,
   lastSignInAt: true,
   createdAt: true,
+  _count: { select: { agentConversations: true, lessonViews: true } },
 } as const;
 
 @Injectable()
@@ -53,6 +54,7 @@ export class StudentsService {
             ],
           }
         : {}),
+      ...(query.status ? { status: query.status } : {}),
     };
     return paginate<
       Prisma.UserGetPayload<{ select: typeof selectFields }>,
@@ -90,18 +92,15 @@ export class StudentsService {
     }
   }
 
-  // Deletes the User row and its Student satellite row together — Student otherwise survives
-  // as an orphan forever, since the FK runs User.studentId -> Student.id with no cascade back.
-  // Enrollment rows cascade-delete automatically (onDelete: Cascade on Enrollment.student).
-  async delete(id: string) {
-    const user = await this.prisma.user.findFirstOrThrow({
-      where: { id, studentId: { not: null } },
-      select: { studentId: true },
+  // Un-suspending goes through resetPassword instead of a direct status write — ACTIVE is never
+  // admin-settable, only reachable by the student actually logging in and changing their password.
+  async suspend(id: string) {
+    await this.findOne(id);
+    return this.prisma.user.update({
+      where: { id },
+      data: { status: Status.SUSPENDED },
+      select: selectFields,
     });
-    await this.prisma.$transaction([
-      this.prisma.user.delete({ where: { id } }),
-      this.prisma.student.delete({ where: { id: user.studentId! } }),
-    ]);
   }
 
   // Back to the fixed bulk-register temp password; status returns to INACTIVE until the

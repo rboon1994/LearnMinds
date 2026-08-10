@@ -320,7 +320,7 @@ export default function AdminCoursesPage() {
                     setPage(1);
                   }}
                   options={STATUS_OPTIONS}
-                  placeholder="All statuses"
+                  placeholder="All status"
                   value={statusFilter}
                 />
               </div>
