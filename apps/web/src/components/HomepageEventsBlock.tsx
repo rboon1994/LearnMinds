@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { EventCalendar } from './EventCalendar';
 import type { CalendarEvent } from './SessionCard';
@@ -21,15 +22,18 @@ function currentKLYearMonth() {
 export function HomepageEventsBlock() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const { year, month } = currentKLYearMonth();
+  const router = useRouter();
 
   useEffect(() => {
+    const controller = new AbortController();
     const params = new URLSearchParams({
       month: `${year}-${String(month).padStart(2, '0')}`,
     });
-    fetch(`${apiUrl}/events?${params.toString()}`)
+    fetch(`${apiUrl}/events?${params.toString()}`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : []))
       .then(setEvents)
       .catch(() => {});
+    return () => controller.abort();
   }, [year, month]);
 
   if (events.length === 0) return null;
@@ -48,31 +52,34 @@ export function HomepageEventsBlock() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        {/* Calendar — left 2/3, entire block links to /events */}
-        <div className="col-span-2">
-          <Link
-            href="/events"
-            className="group block relative rounded-2xl ring-1 ring-transparent hover:ring-2 hover:ring-indigo-300 transition-all"
-          >
-            <EventCalendar
-              year={year}
-              month={month}
-              events={events}
-              selectedDate={null}
-              onSelectDate={() => {}}
-              onPrevMonth={() => {}}
-              onNextMonth={() => {}}
-              canGoPrev={false}
-              hideNav
-            />
-            <span className="absolute bottom-3 right-4 text-xs text-slate-400 group-hover:text-indigo-500 transition-colors pointer-events-none">
-              Browse by date →
-            </span>
-          </Link>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Calendar — left 2/3 on md+, hidden on mobile */}
+        {/* ponytail: role="link" div avoids <a>+<button> nesting (HTML spec violation) */}
+        <div
+          role="link"
+          tabIndex={0}
+          onClick={() => router.push('/events')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') router.push('/events'); }}
+          aria-label="Browse upcoming events by date"
+          className="hidden md:block col-span-1 md:col-span-2 group relative rounded-2xl ring-1 ring-transparent hover:ring-2 hover:ring-indigo-300 transition-all cursor-pointer"
+        >
+          <EventCalendar
+            year={year}
+            month={month}
+            events={events}
+            selectedDate={null}
+            onSelectDate={() => {}}
+            onPrevMonth={() => {}}
+            onNextMonth={() => {}}
+            canGoPrev={false}
+            hideNav
+          />
+          <span className="absolute bottom-3 right-4 text-xs text-slate-400 group-hover:text-indigo-500 transition-colors pointer-events-none">
+            Browse by date →
+          </span>
         </div>
 
-        {/* Event cards — right 1/3, vertical stack */}
+        {/* Event cards — right 1/3 on md+, full width on mobile */}
         <div className="col-span-1 flex flex-col gap-3">
           {preview.map((event) => (
             <Link
