@@ -4,6 +4,7 @@ import { BrandLogo } from "@/components/auth/BrandLogo";
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { HomepageEventsBlock } from "@/components/HomepageEventsBlock";
 
 export default function Home() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -21,6 +22,12 @@ export default function Home() {
             
             <div className="flex items-center gap-4">
               <div className="hidden md:flex items-center gap-4">
+                <Link
+                  href="/events"
+                  className="text-gray-600 hover:text-gray-900 transition-colors font-medium"
+                >
+                  Events
+                </Link>
                 <Link
                   href="/login"
                   className="text-gray-600 hover:text-gray-900 transition-colors font-medium"
@@ -50,6 +57,9 @@ export default function Home() {
             <div className="md:hidden py-4 border-t border-gray-100">
               <div className="flex flex-col space-y-4">
                 <hr className="border-gray-100" />
+                <Link href="/events" className="text-gray-600 hover:text-gray-900 transition-colors font-medium">
+                  Events
+                </Link>
                 <div className="flex flex-col space-y-3">
                   <Button variant="secondary" size="md" href="/login" className="w-full">Sign In</Button>
                   <Button variant="gradient" size="md" href="/signup" className="w-full">Get Started</Button>
@@ -85,27 +95,7 @@ export default function Home() {
               <span className="gradient-text">Digital Brain</span>
             </h1>
 
-            <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-              Transform your team&apos;s knowledge into actionable intelligence. Build custom AI agents
-              that understand your business and empower every team member with instant answers.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
-              <Button variant="gradient" size="lg" href="/signup">Start Building Free</Button>
-              <a
-                href="#how-it-works"
-                className="flex items-center gap-2 text-gray-700 px-8 py-4 rounded-full font-semibold text-lg border-2 border-gray-200 hover:border-gray-300 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                See How It Works
-              </a>
-            </div>
+            <HomepageEventsBlock />
 
             {/* Hero Dashboard Preview */}
             <div className="relative">
@@ -509,43 +499,6 @@ export default function Home() {
                     </li>
                   </ul>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-12">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="relative overflow-hidden rounded-3xl gradient-bg p-12 text-center">
-            {/* Background pattern */}
-            <div className="absolute inset-0 opacity-10">
-              <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <defs>
-                  <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-                    <path d="M 10 0 L 0 0 0 10" fill="none" stroke="white" strokeWidth="0.5" />
-                  </pattern>
-                </defs>
-                <rect width="100" height="100" fill="url(#grid)" />
-              </svg>
-            </div>
-
-            <div className="relative">
-              <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-                Ready to Transform Your Team&apos;s Knowledge?
-              </h2>
-              <p className="text-xl text-white/90 mb-10 max-w-2xl mx-auto">
-                Join hundreds of companies using LearnMinds to build smarter, faster, and more collaborative teams.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button variant="secondary" size="lg" href="/signup">Start Building Free</Button>
-                <a
-                  href="#features"
-                  className="bg-white/20 text-white px-8 py-4 rounded-full font-semibold text-lg hover:bg-white/30 transition-colors backdrop-blur-sm border border-white/30"
-                >
-                  Explore Features
-                </a>
               </div>
             </div>
           </div>
