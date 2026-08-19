@@ -89,6 +89,15 @@ export default function Home() {
             <HomepageEventsBlock />
 
             {/* Hero Dashboard Preview */}
+            <div className="text-center max-w-3xl mx-auto mt-12 mb-8">
+              <h2 className="text-4xl font-bold mb-4">
+                See It{" "}
+                <span className="gradient-text">In Action</span>
+              </h2>
+              <p className="text-xl text-gray-600">
+                A live look at how your team gets instant answers powered by AI.
+              </p>
+            </div>
             <div className="relative">
               <div className="gradient-border p-1">
                 <div className="bg-gray-50 rounded-[15px] overflow-hidden shadow-2xl">

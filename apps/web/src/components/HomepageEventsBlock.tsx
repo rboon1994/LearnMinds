@@ -41,27 +41,28 @@ export function HomepageEventsBlock() {
   const preview = events.slice(0, 3);
 
   return (
-    <div className="w-full mt-8 mb-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">Upcoming Events</h2>
-        <Link
-          href="/events"
-          className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
-        >
-          View all events →
-        </Link>
+    <div className="w-full mt-12">
+      <div className="text-center max-w-3xl mx-auto mb-8">
+        <h2 className="text-4xl font-bold mb-4">
+          Upcoming{" "}
+          <span className="gradient-text">Events</span>
+        </h2>
+        <p className="text-xl text-gray-600">
+          Join live workshops and online sessions. Learn from experts and connect with your community.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
         {/* Calendar — left 2/3 on md+, hidden on mobile */}
         {/* ponytail: role="link" div avoids <a>+<button> nesting (HTML spec violation) */}
+        {/* ponytail: zoom:0.8 shrinks calendar layout footprint without component changes */}
         <div
           role="link"
           tabIndex={0}
           onClick={() => router.push('/events')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') router.push('/events'); }}
           aria-label="Browse upcoming events by date"
-          className="hidden md:block col-span-1 md:col-span-2 group relative rounded-2xl ring-1 ring-transparent hover:ring-2 hover:ring-indigo-300 transition-all cursor-pointer"
+          className="hidden md:block col-span-1 md:col-span-2 zoom-[0.8] rounded-2xl ring-1 ring-transparent hover:ring-2 hover:ring-indigo-300 transition-all cursor-pointer"
         >
           <EventCalendar
             year={year}
@@ -74,22 +75,21 @@ export function HomepageEventsBlock() {
             canGoPrev={false}
             hideNav
           />
-          <span className="absolute bottom-3 right-4 text-xs text-slate-400 group-hover:text-indigo-500 transition-colors pointer-events-none">
-            Browse by date →
-          </span>
         </div>
 
         {/* Event cards — right 1/3 on md+, full width on mobile */}
-        <div className="col-span-1 flex flex-col gap-3">
+        <div className="col-span-1 flex flex-col gap-1.5">
           {preview.map((event) => (
             <Link
               key={event.id}
               href="/events"
-              className="block flex-1 p-4 bg-white rounded-xl border border-gray-100 hover:shadow-md hover:border-indigo-200 transition-all"
+              className="relative block overflow-hidden rounded-xl aspect-video hover:opacity-90 transition-opacity"
             >
-              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{event.title}</p>
-              {event.description && (
-                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{event.description}</p>
+              {event.thumbnail ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={event.thumbnail} alt={event.title} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full gradient-bg" />
               )}
             </Link>
           ))}
@@ -97,7 +97,7 @@ export function HomepageEventsBlock() {
           {/* "View all" placeholder card */}
           <Link
             href="/events"
-            className="block p-4 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 hover:border-indigo-300 transition-all text-center"
+            className="block py-2 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 hover:border-indigo-300 transition-all text-center"
           >
             <p className="text-sm font-medium text-indigo-600">View all events →</p>
           </Link>

@@ -72,8 +72,8 @@ export function EventCalendar({
   const monthLabel = firstOfMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-4">
-      <div className="flex items-center justify-between mb-3">
+    <div className="bg-white rounded-2xl border border-slate-200 p-3">
+      <div className="flex items-center justify-between mb-2">
         {!hideNav && (
           <button
             aria-label="Previous month"
@@ -97,12 +97,12 @@ export function EventCalendar({
           </button>
         )}
       </div>
-      <div className="grid grid-cols-7 gap-1 mb-1 text-center text-xs text-slate-400">
+      <div className="grid grid-cols-7 gap-0.5 mb-1 text-center text-xs text-slate-400">
         {WEEKDAY_LABELS.map((label, idx) => (
           <div key={idx}>{label}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-0.5">
         {Array.from({ length: startWeekday }).map((_, idx) => (
           <div key={`pad-${idx}`} />
         ))}
