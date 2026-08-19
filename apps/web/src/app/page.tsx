@@ -23,12 +23,6 @@ export default function Home() {
             <div className="flex items-center gap-4">
               <div className="hidden md:flex items-center gap-4">
                 <Link
-                  href="/events"
-                  className="text-gray-600 hover:text-gray-900 transition-colors font-medium"
-                >
-                  Events
-                </Link>
-                <Link
                   href="/login"
                   className="text-gray-600 hover:text-gray-900 transition-colors font-medium"
                 >
@@ -57,9 +51,6 @@ export default function Home() {
             <div className="md:hidden py-4 border-t border-gray-100">
               <div className="flex flex-col space-y-4">
                 <hr className="border-gray-100" />
-                <Link href="/events" className="text-gray-600 hover:text-gray-900 transition-colors font-medium">
-                  Events
-                </Link>
                 <div className="flex flex-col space-y-3">
                   <Button variant="secondary" size="md" href="/login" className="w-full">Sign In</Button>
                   <Button variant="gradient" size="md" href="/signup" className="w-full">Get Started</Button>
