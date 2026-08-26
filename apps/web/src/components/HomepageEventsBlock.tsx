@@ -6,18 +6,7 @@ import Link from 'next/link';
 import { EventCalendar } from './EventCalendar';
 import type { CalendarEvent } from './SessionCard';
 import { apiUrl } from '@/lib/api';
-
-function currentKLYearMonth() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    timeZone: 'Asia/Kuala_Lumpur',
-  }).formatToParts(new Date());
-  return {
-    year: Number(parts.find((p) => p.type === 'year')?.value),
-    month: Number(parts.find((p) => p.type === 'month')?.value),
-  };
-}
+import { currentKLYearMonth } from '@/lib/eventTime';
 
 export function HomepageEventsBlock() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);

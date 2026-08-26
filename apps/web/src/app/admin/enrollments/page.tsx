@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Papa from 'papaparse';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { AdminTable } from '@/components/ui/AdminTable';
 import type { AdminTableColumn } from '@/components/ui/AdminTable';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDeleteDialog, Dialog } from '@/components/ui/Dialog';
+import { FileUpload } from '@/components/ui/FileUpload';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { RadioGroup } from '@/components/ui/RadioGroup';
@@ -15,7 +17,7 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
-import { formatDateRange } from '@/lib/duration';
+import { formatSessionDateRange } from '@/lib/eventTime';
 
 type Enrollment = {
   id: string;
@@ -36,9 +38,9 @@ function authHeaders() {
 
 // Course titles can repeat across instances (re-run cohorts) — the date range is what
 // disambiguates them, same formatting as the Learn page. Omitted entirely (not just blank) when
-// there's no date range, since formatDateRange returns null for an undated course.
+// there's no date range, since formatSessionDateRange returns null for an undated course.
 function courseLabel(title: string, startDate: string | null, endDate: string | null) {
-  const range = formatDateRange(startDate, endDate);
+  const range = formatSessionDateRange(startDate, endDate);
   return range ? `${title} (${range})` : title;
 }
 
@@ -70,6 +72,63 @@ function targetTypeOf(enrollment: Pick<Enrollment, 'series' | 'course' | 'agent'
   return 'COURSE';
 }
 
+type BulkEmailInput = { email: string; rowNumber: number };
+type BulkResult = { email: string; status: 'created' | 'skipped'; reason?: string };
+type RowStatus = 'error' | 'duplicate' | 'ok';
+type PreviewRow = BulkEmailInput & { status: RowStatus; reason?: string; matchedName?: string };
+
+const STATUS_LABELS: Record<Exclude<RowStatus, 'ok'>, string> = {
+  error: 'Error',
+  duplicate: 'Duplicate',
+};
+
+const STATUS_BADGE_CLASSES: Record<Exclude<RowStatus, 'ok'>, string> = {
+  error: 'bg-red-100 text-red-700',
+  duplicate: 'bg-blue-100 text-blue-700',
+};
+
+const STATUS_SORT_ORDER: Record<Exclude<RowStatus, 'ok'>, number> = {
+  error: 0,
+  duplicate: 1,
+};
+
+// Only Error/Duplicate here — Bulk Register Students also has a Warning tier (its heuristic
+// "email doesn't end in .com" check), which has no equivalent for enrolling existing students.
+function classifyBulkEmails(
+  rows: BulkEmailInput[],
+  students: { studentId: string; fullName: string; email: string }[],
+): PreviewRow[] {
+  const byEmail = new Map(students.map((s) => [s.email.toLowerCase(), s]));
+  const seen = new Set<string>();
+
+  return rows.map((row) => {
+    const email = row.email.toLowerCase();
+    if (!email) return { ...row, status: 'error', reason: 'email address missing' };
+
+    const match = byEmail.get(email);
+    if (!match) return { ...row, status: 'error', reason: 'no student found with this email' };
+
+    if (seen.has(email)) {
+      return { ...row, status: 'duplicate', reason: 'duplicate email in file', matchedName: match.fullName };
+    }
+    seen.add(email);
+    return { ...row, status: 'ok', matchedName: match.fullName };
+  });
+}
+
+const BULK_ENROLL_TEMPLATE_CSV = 'Email\njane@example.com\n';
+
+function downloadBulkEnrollTemplate() {
+  // BOM prefix + explicit charset so Excel on Windows/Mac reliably detects UTF-8 instead of guessing.
+  const blob = new Blob(['﻿' + BULK_ENROLL_TEMPLATE_CSV], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'bulk-enroll-template.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function AdminEnrollmentsPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -81,6 +140,7 @@ export default function AdminEnrollmentsPage() {
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [students, setStudents] = useState<{ value: string; label: string }[]>([]);
+  const [allStudents, setAllStudents] = useState<{ studentId: string; fullName: string; email: string }[]>([]);
   const [tenants, setTenants] = useState<{ value: string; label: string }[]>([]);
   const [seriesOptions, setSeriesOptions] = useState<{ value: string; label: string }[]>([]);
   const [courseOptions, setCourseOptions] = useState<{ value: string; label: string }[]>([]);
@@ -98,6 +158,17 @@ export default function AdminEnrollmentsPage() {
   const [assignExpiresAt, setAssignExpiresAt] = useState('');
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+
+  const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [bulkContentType, setBulkContentType] = useState<ContentType>('SERIES');
+  const [bulkSeriesId, setBulkSeriesId] = useState('');
+  const [bulkCourseId, setBulkCourseId] = useState('');
+  const [bulkAgentId, setBulkAgentId] = useState('');
+  const [bulkExpiresAt, setBulkExpiresAt] = useState('');
+  const [bulkError, setBulkError] = useState('');
+  const [previewRows, setPreviewRows] = useState<PreviewRow[] | null>(null);
+  const [bulkUploaded, setBulkUploaded] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | null>(null);
   const [editSeriesId, setEditSeriesId] = useState('');
@@ -144,9 +215,10 @@ export default function AdminEnrollmentsPage() {
     if (!user || user.role !== 'SUPER_ADMIN') return;
     fetch(`${apiUrl}/students?pageSize=100000`, { headers: authHeaders() })
       .then((r) => r.json())
-      .then((res: { data: { studentId: string; fullName: string; email: string }[] }) =>
-        setStudents(res.data.map((s) => ({ value: s.studentId, label: `${s.fullName} (${s.email})` }))),
-      )
+      .then((res: { data: { studentId: string; fullName: string; email: string }[] }) => {
+        setStudents(res.data.map((s) => ({ value: s.studentId, label: `${s.fullName} (${s.email})` })));
+        setAllStudents(res.data);
+      })
       .catch(() => {});
     fetch(`${apiUrl}/tenants`, { headers: authHeaders() })
       .then((r) => r.json())
@@ -289,6 +361,87 @@ export default function AdminEnrollmentsPage() {
     loadEnrollments();
   };
 
+  const closeBulkDialog = () => {
+    setIsBulkOpen(false);
+    setBulkContentType('SERIES');
+    setBulkSeriesId('');
+    setBulkCourseId('');
+    setBulkAgentId('');
+    setBulkExpiresAt('');
+    setBulkError('');
+    setPreviewRows(null);
+    setBulkUploaded(false);
+  };
+
+  const backToBulkTargetStep = () => {
+    setPreviewRows(null);
+    setBulkUploaded(false);
+  };
+
+  const parseBulkFile = (file: File) => {
+    setBulkError('');
+    const targetId =
+      bulkContentType === 'SERIES' ? bulkSeriesId : bulkContentType === 'COURSE' ? bulkCourseId : bulkAgentId;
+    if (!targetId) {
+      setBulkError('Please select an enrollment target first');
+      return;
+    }
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim().toLowerCase(),
+      complete: (parsed) => {
+        const rows: BulkEmailInput[] = parsed.data.map((row, index) => ({
+          email: (row.email ?? '').trim(),
+          rowNumber: index + 2, // +2: header occupies row 1, so the first data row is row 2
+        }));
+        if (rows.length === 0) {
+          setBulkError('No rows found in file');
+          return;
+        }
+        setPreviewRows(classifyBulkEmails(rows, allStudents));
+      },
+      error: () => setBulkError('Failed to read file'),
+    });
+  };
+
+  const confirmBulkUpload = async () => {
+    if (!previewRows) return;
+    const uploadable = previewRows.filter((row) => row.status === 'ok');
+    if (uploadable.length === 0) return;
+    setSubmitting(true);
+    const res = await fetch(`${apiUrl}/enrollments/bulk`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        emails: uploadable.map((row) => row.email),
+        seriesId: bulkContentType === 'SERIES' ? bulkSeriesId : undefined,
+        courseId: bulkContentType === 'COURSE' ? bulkCourseId : undefined,
+        agentId: bulkContentType === 'AGENT' ? bulkAgentId : undefined,
+        expiresAt: bulkExpiresAt || undefined,
+      }),
+    });
+    setSubmitting(false);
+    if (!res.ok) {
+      toast.saveFailed();
+      return;
+    }
+    const data: BulkResult[] = await res.json();
+    const outcomeByEmail = new Map(data.map((result) => [result.email, result]));
+    setPreviewRows((prev) =>
+      (prev ?? []).map((row) => {
+        const outcome = outcomeByEmail.get(row.email);
+        if (outcome?.status === 'skipped') {
+          return { ...row, status: 'duplicate', reason: outcome.reason ?? 'Already enrolled' };
+        }
+        return row;
+      }),
+    );
+    setBulkUploaded(true);
+    toast.saved();
+    loadEnrollments();
+  };
+
   const openEditDialog = (enrollment: Enrollment) => {
     setEditingEnrollment(enrollment);
     setEditSeriesId(enrollment.series?.id ?? '');
@@ -351,6 +504,12 @@ export default function AdminEnrollmentsPage() {
     loadEnrollments();
   };
 
+  const uploadableCount = previewRows?.filter((row) => row.status === 'ok').length ?? 0;
+
+  const flaggedRows: (PreviewRow & { status: Exclude<RowStatus, 'ok'> })[] = (
+    previewRows?.filter((row): row is PreviewRow & { status: Exclude<RowStatus, 'ok'> } => row.status !== 'ok') ?? []
+  ).sort((a, b) => STATUS_SORT_ORDER[a.status] - STATUS_SORT_ORDER[b.status]);
+
   const deleteEnrollment = async () => {
     if (!editingEnrollment) return;
     const res = await fetch(`${apiUrl}/enrollments/${editingEnrollment.id}`, {
@@ -371,13 +530,22 @@ export default function AdminEnrollmentsPage() {
       title="Enrollments"
       backHref="/admin"
       actions={
-        <Button
-          leftIcon={<Icon name="plus" className="mr-1.5 h-4 w-4" />}
-          onClick={() => setIsCreateOpen(true)}
-          variant="gradient"
-        >
-          New Enrollment
-        </Button>
+        <>
+          <Button
+            leftIcon={<Icon name="upload" className="mr-1.5 h-4 w-4" />}
+            onClick={() => setIsBulkOpen(true)}
+            variant="secondary"
+          >
+            Bulk Enroll
+          </Button>
+          <Button
+            leftIcon={<Icon name="plus" className="mr-1.5 h-4 w-4" />}
+            onClick={() => setIsCreateOpen(true)}
+            variant="gradient"
+          >
+            New Enrollment
+          </Button>
+        </>
       }
     >
       <AdminTable
@@ -488,6 +656,174 @@ export default function AdminEnrollmentsPage() {
             Create Enrollment
           </Button>
         </form>
+      </Dialog>
+
+      <Dialog isOpen={isBulkOpen} onClose={closeBulkDialog} title="Bulk Enroll Students" size="xl">
+        {previewRows ? (
+          <div className="space-y-4">
+            {bulkUploaded ? (
+              <p className="text-sm text-slate-600">
+                {previewRows.filter((row) => row.status === 'ok').length} created,{' '}
+                {previewRows.filter((row) => row.status !== 'ok').length} failed
+              </p>
+            ) : (
+              <div>
+                <p className="mb-2 font-semibold text-slate-900">Preview ({previewRows.length} rows)</p>
+                <div className="flex gap-2">
+                  {(['error', 'duplicate'] as const).map((status) => {
+                    const count = previewRows.filter((row) => row.status === status).length;
+                    if (count === 0) return null;
+                    return (
+                      <span
+                        key={status}
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[status]}`}
+                      >
+                        {count} {STATUS_LABELS[status]}
+                        {count > 1 ? 's' : ''}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {flaggedRows.length === 0 ? (
+              <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-6 text-center text-sm text-green-700">
+                {bulkUploaded ? 'All rows were processed successfully.' : 'All rows are valid and ready to be enrolled.'}
+              </div>
+            ) : (
+              <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Row</th>
+                      <th className="px-4 py-2 text-left">Status</th>
+                      <th className="px-4 py-2 text-left">Email</th>
+                      <th className="px-4 py-2 text-left">Name</th>
+                      <th className="px-4 py-2 text-left">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {flaggedRows.map((row) => (
+                      <tr key={row.rowNumber}>
+                        <td className="px-4 py-2 text-slate-500">{row.rowNumber}</td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[row.status]}`}
+                          >
+                            {STATUS_LABELS[row.status]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-slate-500">{row.email || '—'}</td>
+                        <td className="px-4 py-2 text-slate-900">{row.matchedName ?? '—'}</td>
+                        <td className="px-4 py-2 text-slate-500">{row.reason ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {bulkUploaded ? (
+              <Button className="w-full" onClick={closeBulkDialog}>
+                Done
+              </Button>
+            ) : (
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="secondary" onClick={backToBulkTargetStep}>
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  onClick={confirmBulkUpload}
+                  disabled={uploadableCount === 0}
+                  isLoading={submitting}
+                  loadingLabel="Enrolling..."
+                >
+                  Enroll {uploadableCount} Student{uploadableCount === 1 ? '' : 's'}
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <RadioGroup
+              label="Enroll in"
+              name="bulkContentType"
+              onChange={(value) => {
+                setBulkContentType(value as ContentType);
+                setBulkSeriesId('');
+                setBulkCourseId('');
+                setBulkAgentId('');
+              }}
+              options={[
+                { label: 'Course Series', value: 'SERIES' },
+                { label: 'Individual Course', value: 'COURSE' },
+                { label: 'AI Agent', value: 'AGENT' },
+              ]}
+              value={bulkContentType}
+            />
+            {bulkContentType === 'SERIES' && (
+              <SearchableSelect
+                id="bulkSeriesId"
+                label="Course Series"
+                onChange={setBulkSeriesId}
+                options={seriesOptions}
+                required
+                value={bulkSeriesId}
+              />
+            )}
+            {bulkContentType === 'COURSE' && (
+              <SearchableSelect
+                id="bulkCourseId"
+                label="Individual Course"
+                onChange={setBulkCourseId}
+                onQueryChange={setCourseSearch}
+                options={courseOptions}
+                required
+                value={bulkCourseId}
+              />
+            )}
+            {bulkContentType === 'AGENT' && (
+              <SearchableSelect
+                id="bulkAgentId"
+                label="AI Agent"
+                onChange={setBulkAgentId}
+                options={agentOptions}
+                required
+                value={bulkAgentId}
+              />
+            )}
+            <Input
+              id="bulkExpiresAt"
+              label="Expires At"
+              type="date"
+              value={bulkExpiresAt}
+              onChange={(e) => setBulkExpiresAt(e.target.value)}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={downloadBulkEnrollTemplate}
+              leftIcon={<Icon name="download" className="h-4 w-4 mr-1.5" />}
+            >
+              Download Template
+            </Button>
+            <FileUpload
+              id="bulkEnrollFile"
+              label="Upload completed template"
+              accept=".csv"
+              acceptLabel="CSV file, max 15MB"
+              maxSizeBytes={15 * 1024 * 1024}
+              onFilesSelected={(files) => {
+                if (files[0]) parseBulkFile(files[0]);
+              }}
+            />
+            {bulkError && (
+              <Alert type="error" icon={<Icon name="error" className="h-4 w-4" />}>
+                {bulkError}
+              </Alert>
+            )}
+          </div>
+        )}
       </Dialog>
 
       <Dialog isOpen={editingEnrollment !== null} onClose={closeEditDialog} title="Edit Enrollment">

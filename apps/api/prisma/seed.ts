@@ -56,8 +56,20 @@ async function main() {
     {
       name: 'AI Chat',
       href: '/ai-chat',
-      icon: 'robot',
+      icon: 'chat-bubble',
       order: 4,
+      isSystem: true,
+      isAdminNav: false,
+      isAllDepts: true,
+      isStudentVisible: true,
+      packages: ['FREE', 'PRO', 'ENTERPRISE'],
+      status: 'ACTIVE',
+    },
+    {
+      name: 'Events',
+      href: '/events',
+      icon: 'calendar',
+      order: 5,
       isSystem: true,
       isAdminNav: false,
       isAllDepts: true,
@@ -184,12 +196,35 @@ async function main() {
       packages: [],
       status: 'ACTIVE',
     },
+    {
+      name: 'Event Management',
+      key: 'event-management',
+      description: 'Manage events and sessions',
+      order: 12,
+      isSystem: true,
+      // Same as speaker-management/knowledge-base-management: an empty packages array means
+      // this tile always shows as "locked" for Role.ADMIN (no package unlocks it) while
+      // AuthService.getAdminFeatures marks every feature 'available' for SUPER_ADMIN
+      // regardless of packages — the actual API access control is EventsController's
+      // @Roles(Role.SUPER_ADMIN), not this AdminFeatureGuard-style package gate.
+      packages: [],
+      status: 'ACTIVE',
+    },
   ];
   for (const feature of adminFeatures) {
     await prisma.adminFeature.upsert({
       where: { key: feature.key },
       create: feature,
       update: feature,
+    });
+  }
+
+  // EventCategory — starting set matching the enum values it replaced; SUPER_ADMIN can
+  // rename/add/remove from here via the admin UI. No unique constraint on name (enforced
+  // app-side, see EventCategoriesService), so this is create-if-none-exist, not an upsert.
+  if ((await prisma.eventCategory.count()) === 0) {
+    await prisma.eventCategory.createMany({
+      data: [{ name: 'Sales' }, { name: 'Marketing' }, { name: 'Operation' }, { name: 'HR' }],
     });
   }
 

@@ -57,6 +57,32 @@ enum AgentAttachmentType {
   IMAGE
 }
 
+enum SessionType {
+  WEBINAR
+  ONLINE
+  OFFLINE
+}
+
+enum SessionStatus {
+  OPEN
+  PLANNING
+  SCHEDULED
+  SELLING_FAST
+  LAST_FEW_SEATS
+  FULL
+  CLOSED
+}
+
+// Admin-managed tags for Events (SUPER_ADMIN CRUD via apps/api/src/event-categories) — replaces
+// a former fixed enum (SALES/MARKETING/OPERATION/HR), seeded as the starting rows in seed.ts.
+model EventCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  events    Event[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Tenant {
   id           String         @id @default(cuid())
   name         String
@@ -96,6 +122,7 @@ model User {
   enrollmentsGranted Enrollment[]
   agentConversations AgentConversation[]
   lessonViews        LessonView[]
+  eventsCreated      Event[]
 }
 
 // Thin satellite for the Student "flavor" of a User row (role: STUDENT, tenantId: null) —
@@ -155,7 +182,7 @@ model AdminFeature {
 // Enrollment grants access at this level — enrolling in a series unlocks every Course under it.
 model CourseSeries {
   id          String       @id @default(cuid())
-  name        String
+  name        String       @unique
   tenantId    String?
   tenant      Tenant?      @relation(fields: [tenantId], references: [id])
   courses     Course[]
@@ -195,15 +222,16 @@ model Course {
 }
 
 model Speaker {
-  id            String    @id @default(cuid())
+  id            String         @id @default(cuid())
   name          String
   title         String?
   description   String?
   thumbnail     String?
   courses       Course[]
   agentsCreated AiAgent[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  sessions      EventSession[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
 
 model Lesson {
@@ -391,23 +419,23 @@ model AgentConversation {
 }
 
 model AgentMessage {
-  id             String            @id @default(cuid())
-  conversationId String
-  conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role           AgentMessageRole
-  content        String            @db.Text
-  attachments    AgentAttachment[]
+  id              String            @id @default(cuid())
+  conversationId  String
+  conversation    AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role            AgentMessageRole
+  content         String            @db.Text
+  attachments     AgentAttachment[]
   // Only ever set on ASSISTANT messages — the OpenAI completion call is what has a token/cost
   // cost; the USER message that triggered it doesn't. costUsd is computed once at send time from
   // AiAgentModel's per-1M-token prices, not recomputed later if those prices change afterward.
-  inputTokens    Int?
-  outputTokens   Int?
+  inputTokens     Int?
+  outputTokens    Int?
   // Number of file_search tool invocations OpenAI billed for this turn ($2.50/1000 calls,
   // hardcoded in agent-chat.service.ts — not a configurable AiAgentModel price like token
   // costs, since it's a flat platform-wide rate, not model-specific). Already folded into costUsd.
   fileSearchCalls Int?
-  costUsd        Decimal?          @db.Decimal(10, 6)
-  createdAt      DateTime          @default(now())
+  costUsd         Decimal?          @db.Decimal(10, 6)
+  createdAt       DateTime          @default(now())
 
   @@index([conversationId])
 }
@@ -428,4 +456,65 @@ model AgentAttachment {
   createdAt    DateTime            @default(now())
 
   @@index([messageId])
+}
+
+// Event Calendar — platform-wide (no tenantId, by design), Super-Admin-managed only.
+// A container (e.g. a "summit") grouping one or more EventSession occurrences.
+model Event {
+  id          String          @id @default(cuid())
+  title       String
+  description String?
+  thumbnail   String?
+  status      ContentStatus   @default(DRAFT)
+  categories  EventCategory[]
+  // Superseded by landingContent below — no code reads/writes this anymore. Kept nullable
+  // (never dropped) to preserve historical data for any Event created before the templated
+  // landing page existed.
+  landingPageLink String?
+  // Templated, admin-editable landing page content for ONLINE/OFFLINE session cards under this
+  // Event (shared across all of them; WEBINAR sessions use their own EventSession.landingPageLink
+  // instead, since a Webinar's registration page is specific to that one session). Shape is the
+  // LandingContent type in apps/api/src/events/dto/landing-content.dto.ts.
+  landingContent Json @default("{\"hero\":{\"name\":\"\",\"title\":\"\",\"credentials\":[],\"photoUrl\":\"\"},\"course\":{\"title\":\"\",\"subtitle\":\"\",\"days\":[]},\"testimonials\":[],\"gallery\":[]}")
+  createdById String?
+  createdBy   User?           @relation(fields: [createdById], references: [id])
+  sessions    EventSession[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([status])
+}
+
+// A single scheduled occurrence under an Event — the unit the calendar/cards actually
+// display. startDateTime/endDateTime are required for ONLINE/OFFLINE (enforced in the DTOs/
+// service, not here) so "is this session over" can be a plain endDateTime < now() check
+// without a fallback that would hide a session the moment it starts — CLOSED/expired sessions
+// are filtered out at query time, not written back. Nullable at the schema level only because
+// WEBINAR doesn't have a date at all (no calendar placement, never auto-expires — only a
+// manual status change closes it).
+model EventSession {
+  id            String        @id @default(cuid())
+  eventId       String
+  event         Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sessionType   SessionType
+  startDateTime DateTime?
+  endDateTime   DateTime?
+  venue         String?
+  venueMapLink  String?
+  country       String?
+  // Only meaningful for WEBINAR — required there (its own registration/landing page, one per
+  // session). ONLINE/OFFLINE use the parent Event's landingPageLink instead, shared across
+  // however many sessions that Event has.
+  landingPageLink String?
+  price         Decimal       @default(0) @db.Decimal(10, 2)
+  memberPrice   Decimal?      @db.Decimal(10, 2)
+  status        SessionStatus @default(PLANNING)
+  speakers      Speaker[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([eventId])
+  @@index([status, endDateTime])
+  @@index([startDateTime])
+  @@index([country])
 }

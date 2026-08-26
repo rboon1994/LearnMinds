@@ -18,6 +18,7 @@ const FEATURE_META: Record<string, { href: string; icon: IconName; color: string
   'speaker-management': { href: '/admin/speakers', icon: 'user', color: 'bg-cyan-50', subtitle: 'Manage event speakers' },
   'ai-agent-management': { href: '/admin/ai-agents', icon: 'robot', color: 'bg-violet-50', subtitle: 'Manage AI agents' },
   'knowledge-base-management': { href: '/admin/knowledge-base', icon: 'file', color: 'bg-teal-50', subtitle: 'Manage knowledge base documents' },
+  'event-management': { href: '/admin/events', icon: 'calendar', color: 'bg-rose-50', subtitle: 'Manage events and sessions' },
 };
 
 // Fallback for any AdminFeature without a matching route/icon above — keeps it

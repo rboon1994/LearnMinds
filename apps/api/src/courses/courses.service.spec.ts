@@ -32,11 +32,6 @@ describe('CoursesService tenant scoping', () => {
   function buildService() {
     const prisma = {
       course: {
-        // findBrowsable/findAllForAdmin etc. all `await` this and (for findBrowsable) call
-        // `.map()` on the result — an unmocked jest.fn() resolves to undefined and crashes the
-        // whole worker process (pre-existing gap in this file, unrelated to this session's
-        // change; only patched enough here to stop the crash, not asserting findBrowsable's
-        // current behavior).
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn(),
         findFirstOrThrow: jest.fn(),
@@ -44,8 +39,8 @@ describe('CoursesService tenant scoping', () => {
         update: jest.fn(),
         delete: jest.fn(),
       },
-      // findBrowsable also awaits this for every non-SUPER_ADMIN actor with a tenantId/studentId
-      // — same pre-existing gap as above.
+      // findBrowsable separately queries the actor's live enrollments to compute a per-course
+      // `isEnrolled` flag (Student via studentId, Tenant/Admin/User via tenantId).
       enrollment: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const service = new CoursesService(prisma as any);
@@ -67,48 +62,65 @@ describe('CoursesService tenant scoping', () => {
     expect(args.where).toEqual({});
   });
 
-  it('findBrowsable scopes a USER to PUBLISHED courses in their tenant or global', () => {
+  // Tenants no longer own courses at all (policy: only Super Admin creates/uploads courses;
+  // Tenant members can only see courses a Super Admin has explicitly enrolled them into) — so
+  // findBrowsable's base query is now identical for USER/ADMIN: global (tenantId: null) +
+  // PUBLISHED only, with per-course access instead reflected via the separate `isEnrolled` flag
+  // below, not by excluding rows from this query.
+  it('findBrowsable scopes a USER to global PUBLISHED courses', () => {
     const { service, prisma } = buildService();
     service.findBrowsable(user);
     expect(prisma.course.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
-          status: ContentStatus.PUBLISHED,
-          OR: [{ tenantId: 'tenant-a' }, { tenantId: null }],
-        },
+        where: { tenantId: null, status: ContentStatus.PUBLISHED },
       }),
     );
   });
 
-  it('findBrowsable scopes an ADMIN to their own tenant regardless of status', () => {
+  it('findBrowsable scopes an ADMIN to the same global PUBLISHED courses as a USER', () => {
     const { service, prisma } = buildService();
     service.findBrowsable(admin);
     expect(prisma.course.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId: 'tenant-a' } }),
+      expect.objectContaining({
+        where: { tenantId: null, status: ContentStatus.PUBLISHED },
+      }),
     );
   });
 
   // Regression test: findBrowsable used to always filter to PUBLISHED regardless of role,
   // hiding drafts from Super Admin on the /learn page even though they should see everything.
-  it('findBrowsable is unrestricted (including drafts) for a Super Admin', () => {
+  // Still global-only (tenantId: null) even for Super Admin — this method only ever browses the
+  // platform-wide course catalog, not any tenant's content.
+  it('findBrowsable is unrestricted by status (including drafts) but still global-only for a Super Admin', () => {
     const { service, prisma } = buildService();
     service.findBrowsable(superAdmin);
     const args = prisma.course.findMany.mock.calls[0][0];
-    expect(args.where).toEqual({});
+    expect(args.where).toEqual({ tenantId: null });
   });
 
-  // A directly-enrolled standalone course must be visible to a Student independent of whether
-  // that course's series (if any) is separately enrolled — the OR-branch added alongside
-  // course-level enrollment.
-  it('findBrowsable makes a directly-enrolled course visible to a Student via either the series or a direct enrollment', () => {
+  // A directly-enrolled standalone course must be flagged enrolled for a Student independent of
+  // whether that course's series (if any) is separately enrolled — the OR-branch added alongside
+  // course-level enrollment, now expressed as the `isEnrolled` flag rather than row exclusion.
+  it('findBrowsable flags a course as enrolled via either its series or a direct enrollment', async () => {
     const { service, prisma } = buildService();
-    service.findBrowsable(student);
-    const args = prisma.course.findMany.mock.calls[0][0];
-    expect(args.where.status).toBe(ContentStatus.PUBLISHED);
-    expect(args.where.OR).toHaveLength(2);
-    const [seriesBranch, courseBranch] = args.where.OR;
-    expect(seriesBranch.series.enrollments.some.studentId).toBe('student-1');
-    expect(courseBranch.enrollments.some.studentId).toBe('student-1');
+    prisma.course.findMany.mockResolvedValue([
+      { id: 'course-1', seriesId: null },
+      { id: 'course-2', seriesId: 'series-1' },
+      { id: 'course-3', seriesId: null },
+    ]);
+    prisma.enrollment.findMany.mockResolvedValue([
+      { seriesId: null, courseId: 'course-1' },
+      { seriesId: 'series-1', courseId: null },
+    ]);
+    const result = await service.findBrowsable(student);
+    expect(prisma.enrollment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ studentId: 'student-1' }),
+      }),
+    );
+    expect(result.find((c) => c.id === 'course-1')!.isEnrolled).toBe(true);
+    expect(result.find((c) => c.id === 'course-2')!.isEnrolled).toBe(true);
+    expect(result.find((c) => c.id === 'course-3')!.isEnrolled).toBe(false);
   });
 
   it('create assigns the admin actor tenantId to the course', async () => {

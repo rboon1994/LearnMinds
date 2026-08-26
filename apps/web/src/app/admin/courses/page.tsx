@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
-import { formatDateRange } from '@/lib/duration';
+import { formatSessionDateRange } from '@/lib/eventTime';
 
 type Course = {
   id: string;
@@ -135,7 +135,7 @@ export default function AdminCoursesPage() {
     { header: 'Title', render: (course) => course.title },
     { header: 'Tenant', hidden: !isSuperAdmin, render: (course) => course.tenant?.name ?? 'Global' },
     { header: 'Status', render: (course) => <StatusBadge status={course.status} /> },
-    { header: 'Date', render: (course) => formatDateRange(course.startDate, course.endDate) ?? '—' },
+    { header: 'Date', render: (course) => formatSessionDateRange(course.startDate, course.endDate) ?? '—' },
     { header: 'Series', render: (course) => course.series?.name ?? '—' },
     { header: 'Lessons', render: (course) => course._count.lessons },
     { header: 'Files', render: (course) => course._count.files },

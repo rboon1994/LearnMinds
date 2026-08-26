@@ -69,7 +69,14 @@ export function EventCalendar({
     });
   }
 
-  const monthLabel = firstOfMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  // timeZone: 'UTC' keeps this in sync with the grid below, which is built entirely from
+  // firstOfMonth's UTC fields — without it, a visitor west of UTC sees the previous month's
+  // name over a grid that's still correctly showing this month's days.
+  const monthLabel = firstOfMonth.toLocaleDateString('en-GB', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-3">

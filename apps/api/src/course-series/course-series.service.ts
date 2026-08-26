@@ -32,6 +32,10 @@ export class CourseSeriesService {
     });
   }
 
+  // Fast, friendly rejection for the common (non-racing) case — the @unique DB constraint
+  // (schema.prisma) is what actually guarantees uniqueness under concurrent requests; this
+  // check alone can't. A rare race that slips past this still can't create a duplicate: the
+  // resulting P2002 is caught by the global PrismaExceptionFilter and returned as a 409.
   private async assertNameAvailable(name: string, excludeId?: string) {
     const existing = await this.prisma.courseSeries.findFirst({
       where: { name: { equals: name, mode: 'insensitive' } },

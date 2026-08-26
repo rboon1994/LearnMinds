@@ -9,7 +9,8 @@ import { VideoPlayer } from '@/components/ui/VideoPlayer';
 import { VimeoPlayer } from '@/components/ui/VimeoPlayer';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
-import { formatDateRange, formatDuration } from '@/lib/duration';
+import { formatDuration } from '@/lib/duration';
+import { formatSessionDateRange } from '@/lib/eventTime';
 
 type Lesson = {
   id: string;
@@ -184,8 +185,8 @@ export default function CourseDetailPage() {
                   {course.speakers.map((s) => s.name).join(', ')}
                 </p>
               )}
-              {formatDateRange(course.startDate, course.endDate) && (
-                <p className="text-xs text-slate-400 mb-1">{formatDateRange(course.startDate, course.endDate)}</p>
+              {formatSessionDateRange(course.startDate, course.endDate) && (
+                <p className="text-xs text-slate-400 mb-1">{formatSessionDateRange(course.startDate, course.endDate)}</p>
               )}
               {course.description && <p className="text-sm text-slate-500">{course.description}</p>}
             </div>
