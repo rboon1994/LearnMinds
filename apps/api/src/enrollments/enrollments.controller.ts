@@ -13,6 +13,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BulkEnrollDto } from './dto/bulk-enroll.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { EnrollmentsQueryDto } from './dto/enrollments-query.dto';
 import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
@@ -35,6 +36,11 @@ export class EnrollmentsController {
   @Post()
   create(@Body() dto: CreateEnrollmentDto, @Request() req: AuthReq) {
     return this.svc.create(dto, req.user.userId);
+  }
+
+  @Post('bulk')
+  bulkEnroll(@Body() dto: BulkEnrollDto, @Request() req: AuthReq) {
+    return this.svc.bulkEnroll(dto, req.user.userId);
   }
 
   @Patch(':id')

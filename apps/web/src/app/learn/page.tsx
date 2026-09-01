@@ -10,7 +10,7 @@ import { Navigation } from '@/components/layout/Navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
-import { formatDateRange } from '@/lib/duration';
+import { formatSessionDateRange } from '@/lib/eventTime';
 
 type Speaker = { id: string; name: string; thumbnail: string | null };
 
@@ -246,7 +246,7 @@ export default function LearnPage() {
                     transition={{ duration: 0.35, delay: idx * 0.04 }}
                     whileHover={{ y: -4 }}
                     onClick={() => router.push(`/learn/${course.id}`)}
-                    className="group bg-white rounded-2xl overflow-hidden border border-slate-200 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/50 transition-all cursor-pointer"
+                    className="group bg-white rounded-2xl overflow-hidden border border-slate-200 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/50 transition-[box-shadow,border-color] cursor-pointer"
                   >
                     <div className="relative aspect-video overflow-hidden">
                       {course.status === 'DRAFT' && (
@@ -275,7 +275,7 @@ export default function LearnPage() {
                       </div>
                     </div>
                     <div className="flex items-center justify-between p-4">
-                      <span className="text-sm">{formatDateRange(course.startDate, course.endDate) ?? ''}</span>
+                      <span className="text-sm">{formatSessionDateRange(course.startDate, course.endDate) ?? ''}</span>
                       <span className="text-sm">{course._count.lessons} lessons</span>
                     </div>
                   </motion.article>
@@ -299,8 +299,9 @@ export default function LearnPage() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.35, delay: idx * 0.04 }}
+                    whileHover={{ y: -4 }}
                     onClick={() => setSelectedCourse(course)}
-                    className="relative group bg-white rounded-2xl overflow-hidden border border-slate-200 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/50 transition-all cursor-pointer"
+                    className="relative group bg-white rounded-2xl overflow-hidden border border-slate-200 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/50 transition-[box-shadow,border-color] cursor-pointer"
                   >
                     <div className="relative aspect-video overflow-hidden">
                       {course.thumbnail ? (
@@ -334,7 +335,7 @@ export default function LearnPage() {
                       </div>
                     </div>
                     <div className="flex items-center justify-between p-4">
-                      <span className="text-sm">{formatDateRange(course.startDate, course.endDate) ?? ''}</span>
+                      <span className="text-sm">{formatSessionDateRange(course.startDate, course.endDate) ?? ''}</span>
                       <span className="text-sm">{course._count.lessons} lessons</span>
                     </div>
                   </motion.article>

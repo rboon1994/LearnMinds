@@ -18,20 +18,3 @@ export function parseDuration(text: string): number | null {
   if (parts.length === 3) return a * 3600 + b * 60 + c;
   return null;
 }
-
-// Display-only label for when a recorded course took place, e.g. "15-17 May 2026" or "3 Jun 2026".
-export function formatDateRange(startDate: string | null, endDate: string | null): string | null {
-  if (!startDate) return null;
-  const start = new Date(startDate);
-  const end = endDate ? new Date(endDate) : null;
-  if (!end || start.getTime() === end.getTime()) {
-    return start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  }
-  const sameYear = start.getFullYear() === end.getFullYear();
-  const sameMonth = sameYear && start.getMonth() === end.getMonth();
-  const startLabel = sameMonth
-    ? String(start.getDate())
-    : start.toLocaleDateString('en-GB', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
-  const endLabel = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  return `${startLabel} - ${endLabel}`;
-}

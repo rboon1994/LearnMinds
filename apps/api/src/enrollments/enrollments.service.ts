@@ -6,9 +6,16 @@ import {
 import { Prisma } from '@prisma/client';
 import { paginate } from '../common/paginate';
 import { PrismaService } from '../prisma/prisma.service';
+import type { BulkEnrollDto } from './dto/bulk-enroll.dto';
 import type { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import type { EnrollmentsQueryDto } from './dto/enrollments-query.dto';
 import type { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
+
+export type BulkEnrollResult = {
+  email: string;
+  status: 'created' | 'skipped';
+  reason?: string;
+};
 
 const enrollmentInclude = {
   student: {
@@ -156,5 +163,80 @@ export class EnrollmentsService {
 
   delete(id: string) {
     return this.prisma.enrollment.delete({ where: { id } });
+  }
+
+  // Bulk-enroll many Students (by email) into one shared target (Series/Course/Agent) — the
+  // common real-world case (e.g. open a course to 50 students at once), not a free-form CSV of
+  // independent (student, target) pairs. Sequential (not Promise.all), mirroring
+  // StudentsService.bulkRegister, so a duplicate email appearing twice within the same batch is
+  // correctly skipped on its second occurrence, not raced into two concurrent creates.
+  async bulkEnroll(
+    dto: BulkEnrollDto,
+    enrolledById: string,
+  ): Promise<BulkEnrollResult[]> {
+    if (
+      [dto.seriesId, dto.courseId, dto.agentId].filter(Boolean).length !== 1
+    ) {
+      throw new BadRequestException(
+        'Exactly one of seriesId, courseId, or agentId is required',
+      );
+    }
+    const results: BulkEnrollResult[] = [];
+    const seen = new Set<string>();
+
+    for (const rawEmail of dto.emails) {
+      const email = rawEmail.trim().toLowerCase();
+      if (seen.has(email)) {
+        results.push({
+          email: rawEmail,
+          status: 'skipped',
+          reason: 'Duplicate email in file',
+        });
+        continue;
+      }
+      seen.add(email);
+
+      const user = await this.prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' }, studentId: { not: null } },
+        select: { studentId: true },
+      });
+      if (!user) {
+        results.push({
+          email: rawEmail,
+          status: 'skipped',
+          reason: 'Student not found',
+        });
+        continue;
+      }
+
+      try {
+        await this.prisma.enrollment.create({
+          data: {
+            seriesId: dto.seriesId,
+            courseId: dto.courseId,
+            agentId: dto.agentId,
+            studentId: user.studentId!,
+            enrolledById,
+            expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+          },
+        });
+        results.push({ email: rawEmail, status: 'created' });
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002'
+        ) {
+          results.push({
+            email: rawEmail,
+            status: 'skipped',
+            reason: 'Already enrolled',
+          });
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    return results;
   }
 }
