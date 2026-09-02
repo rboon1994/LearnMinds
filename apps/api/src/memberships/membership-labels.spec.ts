@@ -19,6 +19,12 @@ describe('membership-labels', () => {
     expect(() => mapStatusLabel('未知状态')).toThrow();
   });
 
+  it('mapStatusLabel throws on prototype chain keys (defense against bypass)', () => {
+    expect(() => mapStatusLabel('constructor')).toThrow();
+    expect(() => mapStatusLabel('toString')).toThrow();
+    expect(() => mapStatusLabel('hasOwnProperty')).toThrow();
+  });
+
   it('resolveEffectiveStatus forces CANCELLED when tier is 非会员, regardless of the status label', () => {
     expect(resolveEffectiveStatus(NON_MEMBER_TIER, '生效中')).toBe(
       MembershipStatus.CANCELLED,

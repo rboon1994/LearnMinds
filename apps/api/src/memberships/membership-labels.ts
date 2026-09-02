@@ -4,12 +4,14 @@ export const NON_MEMBER_TIER = '非会员';
 export const TIER_OPTIONS = [NON_MEMBER_TIER, '10K Silver', '50K Unlimited'] as const;
 export const STATUS_OPTIONS = ['待启用', '生效中', '已过期', '已退会'] as const;
 
-const STATUS_LABEL_MAP: Record<(typeof STATUS_OPTIONS)[number], MembershipStatus> = {
-  待启用: MembershipStatus.PENDING,
-  生效中: MembershipStatus.ACTIVE,
-  已过期: MembershipStatus.EXPIRED,
-  已退会: MembershipStatus.CANCELLED,
-};
+const STATUS_LABEL_MAP = Object.create(null) as Record<
+  (typeof STATUS_OPTIONS)[number],
+  MembershipStatus
+>;
+STATUS_LABEL_MAP['待启用'] = MembershipStatus.PENDING;
+STATUS_LABEL_MAP['生效中'] = MembershipStatus.ACTIVE;
+STATUS_LABEL_MAP['已过期'] = MembershipStatus.EXPIRED;
+STATUS_LABEL_MAP['已退会'] = MembershipStatus.CANCELLED;
 
 // Defense in depth — DTO validation (@IsIn) is the primary gate against an unrecognized label
 // reaching this function at all, but this still throws rather than silently defaulting if it
