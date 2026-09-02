@@ -20,6 +20,7 @@ import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 import { AgentChatModule } from './agent-chat/agent-chat.module';
 import { EventsModule } from './events/events.module';
 import { EventCategoriesModule } from './event-categories/event-categories.module';
+import { MembershipsModule } from './memberships/memberships.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { EventCategoriesModule } from './event-categories/event-categories.modul
     AgentChatModule,
     EventsModule,
     EventCategoriesModule,
+    MembershipsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
