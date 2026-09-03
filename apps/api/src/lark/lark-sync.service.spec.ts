@@ -1,0 +1,293 @@
+import 'reflect-metadata';
+import { ConflictException } from '@nestjs/common';
+import { MembershipStatus, Prisma, Role, Status } from '@prisma/client';
+import { LarkSyncService } from './lark-sync.service';
+import type { LarkMembershipRecordDto } from './dto/lark-membership-record.dto';
+
+function baseRecord(
+  overrides: Partial<LarkMembershipRecordDto> = {},
+): LarkMembershipRecordDto {
+  return {
+    larkRecordId: 'rec1',
+    fullName: 'Jane Tan',
+    email: 'jane@example.com',
+    tier: '10K Silver',
+    status: '生效中',
+    startDate: '2026-01-01',
+    endDate: '2027-01-01',
+    amount: 1000,
+    pendingCommission: 0,
+    approvedCommission: 0,
+    totalCommission: 0,
+    ...overrides,
+  };
+}
+
+function makePrismaMock() {
+  return {
+    membership: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest
+        .fn()
+        .mockImplementation(({ create }: any) => ({ id: 'm1', ...create })),
+      update: jest.fn(),
+    },
+    user: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      findUniqueOrThrow: jest.fn(),
+      update: jest.fn(),
+    },
+    student: { create: jest.fn().mockResolvedValue({ id: 'student-1' }) },
+    $transaction: jest.fn(),
+  };
+}
+
+describe('LarkSyncService.syncRecord', () => {
+  it('creates a new User + Student + PENDING Membership for a brand-new email', async () => {
+    const prisma = makePrismaMock();
+    const createSpy = jest
+      .fn()
+      .mockResolvedValue({ id: 'user-1', email: 'jane@example.com' });
+    prisma.$transaction.mockImplementation((fn: (tx: unknown) => unknown) =>
+      fn({
+        student: { create: jest.fn().mockResolvedValue({ id: 'student-1' }) },
+        user: { create: createSpy },
+      }),
+    );
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      commissionSyncedAt: null,
+    });
+    const svc = new LarkSyncService(prisma as any);
+
+    await svc.syncRecord(baseRecord({ status: '待启用' }));
+
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          role: Role.STUDENT,
+          mustChangePassword: true,
+          status: Status.INACTIVE,
+        }),
+      }),
+    );
+    expect(prisma.membership.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ status: MembershipStatus.PENDING }),
+      }),
+    );
+  });
+
+  it('does not create anything for a never-seen larkRecordId reported as 非会员', async () => {
+    const prisma = makePrismaMock();
+    const svc = new LarkSyncService(prisma as any);
+
+    const result = await svc.syncRecord(
+      baseRecord({ tier: '非会员', status: '已退会' }),
+    );
+
+    expect(result).toBeNull();
+    expect(prisma.membership.upsert).not.toHaveBeenCalled();
+  });
+
+  it('reuses the existing User for an already-registered email (any Role)', async () => {
+    const prisma = makePrismaMock();
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+    });
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      commissionSyncedAt: null,
+    });
+    const svc = new LarkSyncService(prisma as any);
+
+    await svc.syncRecord(baseRecord());
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.membership.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ userId: 'user-1' }),
+      }),
+    );
+  });
+
+  it('for an already-bound larkRecordId, uses the known userId and does not re-resolve by email', async () => {
+    const prisma = makePrismaMock();
+    prisma.membership.findUnique.mockResolvedValue({
+      id: 'm1',
+      userId: 'user-1',
+      larkUpdatedAt: null,
+      referredByUserId: null,
+    });
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      commissionSyncedAt: null,
+    });
+    const svc = new LarkSyncService(prisma as any);
+
+    await svc.syncRecord(baseRecord());
+
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.membership.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { larkRecordId: 'rec1' } }),
+    );
+  });
+
+  it("updates the known User's own email when it changed, and throws 409 on a collision", async () => {
+    const prisma = makePrismaMock();
+    prisma.membership.findUnique.mockResolvedValue({
+      id: 'm1',
+      userId: 'user-1',
+      larkUpdatedAt: null,
+      referredByUserId: null,
+    });
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'old@example.com',
+      commissionSyncedAt: null,
+    });
+    prisma.user.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('conflict', {
+        code: 'P2002',
+        clientVersion: 'x',
+      }),
+    );
+    const svc = new LarkSyncService(prisma as any);
+
+    await expect(
+      svc.syncRecord(baseRecord({ email: 'new@example.com' })),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('tier=非会员 on an existing record forces CANCELLED but never overwrites tier', async () => {
+    const prisma = makePrismaMock();
+    prisma.membership.findUnique.mockResolvedValue({
+      id: 'm1',
+      userId: 'user-1',
+      larkUpdatedAt: null,
+      referredByUserId: null,
+    });
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      commissionSyncedAt: null,
+    });
+    const svc = new LarkSyncService(prisma as any);
+
+    await svc.syncRecord(baseRecord({ tier: '非会员', status: '生效中' }));
+
+    const upsertArgs = prisma.membership.upsert.mock.calls[0][0];
+    expect(upsertArgs.update.status).toBe(MembershipStatus.CANCELLED);
+    expect(upsertArgs.update.tier).toBeUndefined();
+  });
+
+  it('skips the Membership field write when the incoming larkUpdatedAt is older than stored', async () => {
+    const prisma = makePrismaMock();
+    prisma.membership.findUnique.mockResolvedValue({
+      id: 'm1',
+      userId: 'user-1',
+      larkUpdatedAt: new Date('2026-06-01'),
+      referredByUserId: null,
+    });
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      commissionSyncedAt: null,
+    });
+    const svc = new LarkSyncService(prisma as any);
+
+    await svc.syncRecord(baseRecord({ larkUpdatedAt: '2026-01-01' }));
+
+    expect(prisma.membership.upsert).not.toHaveBeenCalled();
+  });
+
+  it('skips the commission AND referralCode overwrite when the incoming larkUpdatedAt is older than User.commissionSyncedAt', async () => {
+    const prisma = makePrismaMock();
+    // Route through the "known larkRecordId" path (not resolveOrCreateUser's $transaction path)
+    // so this test isolates the freshness guard from user-creation concerns.
+    prisma.membership.findUnique.mockResolvedValue({
+      id: 'm1',
+      userId: 'user-1',
+      larkUpdatedAt: new Date('2026-01-01'),
+      referredByUserId: null,
+    });
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      commissionSyncedAt: new Date('2026-06-01'),
+    });
+    const svc = new LarkSyncService(prisma as any);
+
+    await svc.syncRecord(
+      baseRecord({
+        pendingCommission: 999,
+        referralCode: 'STALE-CODE',
+        larkUpdatedAt: '2026-01-01',
+      }),
+    );
+
+    expect(prisma.user.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ pendingCommission: 999 }),
+      }),
+    );
+    expect(prisma.user.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ referralCode: 'STALE-CODE' }),
+      }),
+    );
+  });
+
+  it('converts a referralCode uniqueness conflict into a 409, not a raw 500', async () => {
+    const prisma = makePrismaMock();
+    prisma.membership.findUnique.mockResolvedValue({
+      id: 'm1',
+      userId: 'user-1',
+      larkUpdatedAt: null,
+      referredByUserId: null,
+    });
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      commissionSyncedAt: null,
+    });
+    prisma.user.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('conflict', {
+        code: 'P2002',
+        clientVersion: 'x',
+      }),
+    );
+    const svc = new LarkSyncService(prisma as any);
+
+    await expect(
+      svc.syncRecord(baseRecord({ referralCode: 'TAKEN-CODE' })),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('leaves referredByUserId null when the referrer cannot be resolved yet', async () => {
+    const prisma = makePrismaMock();
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      commissionSyncedAt: null,
+    });
+    prisma.user.findUnique
+      .mockResolvedValueOnce({ id: 'user-1', email: 'jane@example.com' }) // resolveOrCreateUser
+      .mockResolvedValueOnce(null); // referrer lookup
+    const svc = new LarkSyncService(prisma as any);
+
+    await svc.syncRecord(
+      baseRecord({ referredByEmail: 'unknown@example.com' }),
+    );
+
+    expect(prisma.membership.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { referredByUserId: expect.anything() },
+      }),
+    );
+  });
+});

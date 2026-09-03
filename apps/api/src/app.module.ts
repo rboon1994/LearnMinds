@@ -21,6 +21,7 @@ import { AgentChatModule } from './agent-chat/agent-chat.module';
 import { EventsModule } from './events/events.module';
 import { EventCategoriesModule } from './event-categories/event-categories.module';
 import { MembershipsModule } from './memberships/memberships.module';
+import { LarkModule } from './lark/lark.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { MembershipsModule } from './memberships/memberships.module';
     EventsModule,
     EventCategoriesModule,
     MembershipsModule,
+    LarkModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
