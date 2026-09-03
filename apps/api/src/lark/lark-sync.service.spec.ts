@@ -291,3 +291,83 @@ describe('LarkSyncService.syncRecord', () => {
     );
   });
 });
+
+describe('LarkSyncService.syncBulk', () => {
+  it('processes every record and returns a per-record result, even when one throws', async () => {
+    const prisma = makePrismaMock();
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@example.com',
+      commissionSyncedAt: null,
+    });
+    const svc = new LarkSyncService(prisma as any);
+    jest
+      .spyOn(svc, 'syncRecord')
+      .mockImplementationOnce(() => ({ id: 'm1' }) as any)
+      .mockImplementationOnce(() => {
+        throw new Error('boom');
+      });
+
+    const results = await svc.syncBulk([
+      baseRecord({ larkRecordId: 'rec1', email: 'a@example.com' }),
+      baseRecord({ larkRecordId: 'rec2', email: 'b@example.com' }),
+    ]);
+
+    expect(results).toEqual([
+      { larkRecordId: 'rec1', status: 'ok' },
+      { larkRecordId: 'rec2', status: 'error', reason: 'boom' },
+    ]);
+  });
+
+  it('processes multiple records for the same new email sequentially, not concurrently', async () => {
+    const prisma = makePrismaMock();
+    const svc = new LarkSyncService(prisma as any);
+    const callOrder: string[] = [];
+    jest.spyOn(svc, 'syncRecord').mockImplementation(async (dto) => {
+      callOrder.push(`start:${dto.larkRecordId}`);
+      await new Promise((r) => setTimeout(r, 5));
+      callOrder.push(`end:${dto.larkRecordId}`);
+      return { id: dto.larkRecordId } as any;
+    });
+
+    await svc.syncBulk([
+      baseRecord({ larkRecordId: 'rec1', email: 'same@example.com' }),
+      baseRecord({ larkRecordId: 'rec2', email: 'same@example.com' }),
+    ]);
+
+    expect(callOrder).toEqual([
+      'start:rec1',
+      'end:rec1',
+      'start:rec2',
+      'end:rec2',
+    ]);
+  });
+
+  it('two-pass referral resolution resolves the referrer even if it is ordered after the referred record', async () => {
+    const prisma = makePrismaMock();
+    const svc = new LarkSyncService(prisma as any);
+    jest.spyOn(svc, 'syncRecord').mockImplementation(
+      (dto) =>
+        ({
+          id: `m-${dto.larkRecordId}`,
+          referredByUserId: null,
+        }) as any,
+    );
+    prisma.membership.findUnique.mockImplementation(({ where }: any) => ({
+      id: `m-${where.larkRecordId}`,
+      referredByUserId: null,
+    }));
+    const resolveSpy = jest.spyOn(svc, 'resolveReferral').mockResolvedValue();
+
+    await svc.syncBulk([
+      baseRecord({
+        larkRecordId: 'referred',
+        email: 'child@example.com',
+        referredByEmail: 'parent@example.com',
+      }),
+      baseRecord({ larkRecordId: 'referrer', email: 'parent@example.com' }),
+    ]);
+
+    expect(resolveSpy).toHaveBeenCalledWith('m-referred', 'parent@example.com');
+  });
+});

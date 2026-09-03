@@ -10,6 +10,12 @@ import {
 } from '../memberships/membership-labels';
 import type { LarkMembershipRecordDto } from './dto/lark-membership-record.dto';
 
+export type BulkSyncResult = {
+  larkRecordId: string;
+  status: 'ok' | 'error';
+  reason?: string;
+};
+
 @Injectable()
 export class LarkSyncService {
   constructor(private prisma: PrismaService) {}
@@ -72,6 +78,62 @@ export class LarkSyncService {
     }
 
     return membership;
+  }
+
+  // Grouped by email before chunking: two records for the same new email in one batch would
+  // otherwise race each other's User creation into a P2002 if processed concurrently.
+  // Concurrency runs across distinct emails only; records sharing an email run sequentially.
+  async syncBulk(
+    records: LarkMembershipRecordDto[],
+  ): Promise<BulkSyncResult[]> {
+    const groups = new Map<string, LarkMembershipRecordDto[]>();
+    for (const record of records) {
+      const group = groups.get(record.email) ?? [];
+      group.push(record);
+      groups.set(record.email, group);
+    }
+
+    const results = new Map<string, BulkSyncResult>();
+
+    await runInChunks([...groups.values()], 10, async (group) => {
+      for (const record of group) {
+        try {
+          await this.syncRecord(record);
+          results.set(record.larkRecordId, {
+            larkRecordId: record.larkRecordId,
+            status: 'ok',
+          });
+        } catch (err) {
+          results.set(record.larkRecordId, {
+            larkRecordId: record.larkRecordId,
+            status: 'error',
+            reason: err instanceof Error ? err.message : 'Unknown error',
+          });
+        }
+      }
+    });
+
+    // Pass 2: every batch member that synced successfully now exists, so referrals that
+    // couldn't resolve during pass 1 (referrer appeared later in the array) get a second try.
+    for (const record of records) {
+      if (results.get(record.larkRecordId)?.status !== 'ok') continue;
+      if (!record.referredByEmail) continue;
+      const membership = await this.prisma.membership.findUnique({
+        where: { larkRecordId: record.larkRecordId },
+      });
+      if (!membership || membership.referredByUserId) continue;
+      try {
+        await this.resolveReferral(membership.id, record.referredByEmail);
+      } catch (err) {
+        results.set(record.larkRecordId, {
+          larkRecordId: record.larkRecordId,
+          status: 'error',
+          reason: err instanceof Error ? err.message : 'Unknown error',
+        });
+      }
+    }
+
+    return records.map((r) => results.get(r.larkRecordId)!);
   }
 
   // Used both here (single-record, graceful no-op fallback) and by LarkSyncService.syncBulk's
@@ -204,5 +266,15 @@ export class LarkSyncService {
       }
       throw err;
     }
+  }
+}
+
+async function runInChunks<T>(
+  items: T[],
+  size: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  for (let i = 0; i < items.length; i += size) {
+    await Promise.all(items.slice(i, i + size).map(fn));
   }
 }
