@@ -46,12 +46,20 @@ export class LarkApiKeyGuard implements CanActivate {
 
   private recordFailure(ip: string, now: number) {
     const entry = this.failuresByIp.get(ip);
-    if (!entry || now - entry.firstFailureAt >= WINDOW_MS + LOCK_MS) {
+    if (!entry) {
       this.failuresByIp.set(ip, { count: 1, firstFailureAt: now });
     } else {
-      entry.count += 1;
-      if (entry.count === MAX_FAILURES) {
-        entry.lockedAt = now;
+      // Check if entry is stale using consistent anchoring logic
+      const staleThreshold = entry.lockedAt ? LOCK_MS : WINDOW_MS + LOCK_MS;
+      const anchor = entry.lockedAt ?? entry.firstFailureAt;
+      if (now - anchor >= staleThreshold) {
+        // Reset: create a fresh entry
+        this.failuresByIp.set(ip, { count: 1, firstFailureAt: now });
+      } else {
+        entry.count += 1;
+        if (entry.count === MAX_FAILURES) {
+          entry.lockedAt = now;
+        }
       }
     }
   }
@@ -62,7 +70,10 @@ export class LarkApiKeyGuard implements CanActivate {
     }
     this.lastSweepAt = now;
     for (const [ip, entry] of this.failuresByIp.entries()) {
-      if (now - entry.firstFailureAt >= WINDOW_MS + LOCK_MS) {
+      // Use consistent anchoring logic: locked entries expire based on lockedAt, unlocked based on firstFailureAt
+      const staleThreshold = entry.lockedAt ? LOCK_MS : WINDOW_MS + LOCK_MS;
+      const anchor = entry.lockedAt ?? entry.firstFailureAt;
+      if (now - anchor >= staleThreshold) {
         this.failuresByIp.delete(ip);
       }
     }

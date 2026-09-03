@@ -84,32 +84,40 @@ describe('LarkApiKeyGuard', () => {
     jest.useRealTimers();
   });
 
-  it('removes stale entries from the failures map after window+lock time', () => {
+  it('removes locked-out entries after lockout expires', () => {
     jest.useFakeTimers();
     const guard = new LarkApiKeyGuard();
     const ip = '5.5.5.5';
     const now = Date.now();
 
     jest.setSystemTime(now);
-    expect(() => guard.canActivate(makeContext({ 'x-api-key': 'wrong' }, ip))).toThrow();
-    // Entry created at time 0
+    // Drive to lockout: 5 failures, lockedAt = now (approximately)
+    for (let i = 0; i < 5; i++) {
+      expect(() => guard.canActivate(makeContext({ 'x-api-key': 'wrong' }, ip))).toThrow();
+    }
 
-    // Advance past WINDOW_MS + LOCK_MS (60s + 300s = 360s = 360000ms)
-    jest.setSystemTime(now + 360001);
+    // Scenario 1: inside lockout window (t = now + 100s, lockout is [now, now+300s])
+    jest.setSystemTime(now + 100000);
+    expect(() =>
+      guard.canActivate(makeContext({ 'x-api-key': 'test-secret' }, ip)),
+    ).toThrow(UnauthorizedException);
+
+    // Scenario 2: after lockout expires (t = now + 300s + 1ms)
+    jest.setSystemTime(now + 300001);
+
+    // Spy on the map to verify entry removal
+    const deleteSpy = jest.spyOn(guard['failuresByIp'], 'delete');
 
     // Trigger sweep by making a request
-    const sweepSpy = jest.spyOn(guard as any, 'sweepStaleEntries');
     expect(() => guard.canActivate(makeContext({ 'x-api-key': 'wrong' }, ip))).toThrow();
-    expect(sweepSpy).toHaveBeenCalled();
 
-    // After sweep, the old entry should be gone.
-    // Verify by checking that a new failure count starts at 1 (fresh entry).
-    // If entry wasn't deleted, count would continue from before.
-    // We can't directly inspect the map, but making another request and checking
-    // it throws (as expected for a fresh IP) works.
-    // Actually, after sweep + threshold, trying again should create a fresh entry.
+    // Verify that delete was called, proving the entry was removed
+    expect(deleteSpy).toHaveBeenCalledWith(ip);
 
-    sweepSpy.mockRestore();
+    // Correct key should now succeed (entry was cleaned)
+    expect(guard.canActivate(makeContext({ 'x-api-key': 'test-secret' }, ip))).toBe(true);
+
+    deleteSpy.mockRestore();
     jest.useRealTimers();
   });
 });
