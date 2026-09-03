@@ -5,13 +5,18 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 
 const WINDOW_MS = 60_000;
 const MAX_FAILURES = 5;
 const LOCK_MS = 5 * 60_000;
 const SWEEP_INTERVAL_MS = 60_000; // ponytail: sweep at most once per minute
 
-type FailureEntry = { count: number; firstFailureAt: number; lockedAt?: number };
+type FailureEntry = {
+  count: number;
+  firstFailureAt: number;
+  lockedAt?: number;
+};
 
 @Injectable()
 export class LarkApiKeyGuard implements CanActivate {
@@ -20,7 +25,7 @@ export class LarkApiKeyGuard implements CanActivate {
   private lastSweepAt: number = 0;
 
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<Request>();
     const ip: string = request.ip ?? 'unknown';
     const providedKey = request.headers['x-api-key'];
     const expectedKey = process.env.LARK_API_KEY;
