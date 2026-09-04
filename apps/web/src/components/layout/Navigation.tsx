@@ -137,32 +137,35 @@ export function Navigation({
             </div>
           )}
 
-          <div
-            className={`flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer ${
-              collapsed ? 'justify-center' : ''
-            }`}
-          >
-            <div className="w-9 h-9 rounded-full bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
-              {user.initials.charAt(0)}
-            </div>
-            {!collapsed && (
-              <>
+          <div className={`flex items-center gap-3 p-2 rounded-xl ${collapsed ? 'justify-center' : ''}`}>
+            <Link
+              href="/profile"
+              className={`flex items-center gap-3 flex-1 min-w-0 rounded-xl p-1 -m-1 hover:bg-slate-100 transition-colors ${
+                collapsed ? 'justify-center' : ''
+              }`}
+            >
+              <div className="w-9 h-9 rounded-full bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
+                {user.initials.charAt(0)}
+              </div>
+              {!collapsed && (
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-slate-900 truncate">{user.name}</div>
                   <div className="text-xs text-slate-500 truncate">{user.role}</div>
                 </div>
-                <button
-                  onClick={() => {
-                    if (onLogout) { onLogout(); return; }
-                    localStorage.removeItem('token');
-                    window.location.replace('/login');
-                  }}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white transition-colors"
-                  aria-label="Log out"
-                >
-                  <Icon name="logout" className="w-4 h-4" />
-                </button>
-              </>
+              )}
+            </Link>
+            {!collapsed && (
+              <button
+                onClick={() => {
+                  if (onLogout) { onLogout(); return; }
+                  localStorage.removeItem('token');
+                  window.location.replace('/login');
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white transition-colors"
+                aria-label="Log out"
+              >
+                <Icon name="logout" className="w-4 h-4" />
+              </button>
             )}
           </div>
         </div>
