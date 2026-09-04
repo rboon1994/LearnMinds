@@ -118,11 +118,11 @@ export class LarkSyncService {
     for (const record of records) {
       if (results.get(record.larkRecordId)?.status !== 'ok') continue;
       if (!record.referredByEmail) continue;
-      const membership = await this.prisma.membership.findUnique({
-        where: { larkRecordId: record.larkRecordId },
-      });
-      if (!membership || membership.referredByUserId) continue;
       try {
+        const membership = await this.prisma.membership.findUnique({
+          where: { larkRecordId: record.larkRecordId },
+        });
+        if (!membership || membership.referredByUserId) continue;
         await this.resolveReferral(membership.id, record.referredByEmail);
       } catch (err) {
         results.set(record.larkRecordId, {

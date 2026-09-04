@@ -370,4 +370,46 @@ describe('LarkSyncService.syncBulk', () => {
 
     expect(resolveSpy).toHaveBeenCalledWith('m-referred', 'parent@example.com');
   });
+
+  it('isolates a pass-2 membership lookup failure to that record, leaving other results intact', async () => {
+    const prisma = makePrismaMock();
+    const svc = new LarkSyncService(prisma as any);
+    jest.spyOn(svc, 'syncRecord').mockImplementation(
+      (dto) =>
+        ({
+          id: `m-${dto.larkRecordId}`,
+          referredByUserId: null,
+        }) as any,
+    );
+    prisma.membership.findUnique.mockImplementation(({ where }: any) => {
+      if (where.larkRecordId === 'broken') {
+        throw new Error('connection lost');
+      }
+      return Promise.resolve({
+        id: `m-${where.larkRecordId}`,
+        referredByUserId: null,
+      });
+    });
+    const resolveSpy = jest.spyOn(svc, 'resolveReferral').mockResolvedValue();
+
+    const results = await svc.syncBulk([
+      baseRecord({
+        larkRecordId: 'broken',
+        email: 'broken@example.com',
+        referredByEmail: 'parent@example.com',
+      }),
+      baseRecord({
+        larkRecordId: 'fine',
+        email: 'fine@example.com',
+        referredByEmail: 'parent@example.com',
+      }),
+    ]);
+
+    expect(results).toEqual([
+      { larkRecordId: 'broken', status: 'error', reason: 'connection lost' },
+      { larkRecordId: 'fine', status: 'ok' },
+    ]);
+    expect(resolveSpy).toHaveBeenCalledTimes(1);
+    expect(resolveSpy).toHaveBeenCalledWith('m-fine', 'parent@example.com');
+  });
 });
