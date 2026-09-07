@@ -112,6 +112,14 @@ describe('LarkSyncService.syncRecord', () => {
         create: expect.objectContaining({ userId: 'user-1' }),
       }),
     );
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: {
+        fullName: 'Jane Tan',
+        phoneCountryCode: undefined,
+        phoneNo: undefined,
+      },
+    });
   });
 
   it('for an already-bound larkRecordId, uses the known userId and does not re-resolve by email', async () => {
@@ -137,7 +145,7 @@ describe('LarkSyncService.syncRecord', () => {
     );
   });
 
-  it("updates the known User's own email when it changed, and throws 409 on a collision", async () => {
+  it("updates the known User's basic info (including email) when not stale, and throws 409 on a collision", async () => {
     const prisma = makePrismaMock();
     prisma.membership.findUnique.mockResolvedValue({
       id: 'm1',
@@ -147,7 +155,7 @@ describe('LarkSyncService.syncRecord', () => {
     });
     prisma.user.findUniqueOrThrow.mockResolvedValue({
       id: 'user-1',
-      email: 'old@example.com',
+      email: 'jane@example.com',
       commissionSyncedAt: null,
     });
     prisma.user.update.mockRejectedValue(
@@ -161,6 +169,13 @@ describe('LarkSyncService.syncRecord', () => {
     await expect(
       svc.syncRecord(baseRecord({ email: 'new@example.com' })),
     ).rejects.toThrow(ConflictException);
+
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'user-1' },
+        data: expect.objectContaining({ email: 'new@example.com' }),
+      }),
+    );
   });
 
   it('tier=非会员 on an existing record forces CANCELLED but never overwrites tier', async () => {
@@ -203,6 +218,55 @@ describe('LarkSyncService.syncRecord', () => {
     await svc.syncRecord(baseRecord({ larkUpdatedAt: '2026-01-01' }));
 
     expect(prisma.membership.upsert).not.toHaveBeenCalled();
+  });
+
+  it('does not overwrite the known User email (or any basic info) when the incoming larkUpdatedAt is stale', async () => {
+    const prisma = makePrismaMock();
+    prisma.membership.findUnique.mockResolvedValue({
+      id: 'm1',
+      userId: 'user-1',
+      larkUpdatedAt: new Date('2026-06-01'),
+      referredByUserId: null,
+    });
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      commissionSyncedAt: null,
+    });
+    const svc = new LarkSyncService(prisma as any);
+
+    await svc.syncRecord(
+      baseRecord({ email: 'stale-new@example.com', larkUpdatedAt: '2026-01-01' }),
+    );
+
+    expect(prisma.user.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          email: expect.anything(),
+        }),
+      }),
+    );
+    expect(prisma.user.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fullName: expect.anything(),
+        }),
+      }),
+    );
+    expect(prisma.user.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          phoneCountryCode: expect.anything(),
+        }),
+      }),
+    );
+    expect(prisma.user.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          phoneNo: expect.anything(),
+        }),
+      }),
+    );
   });
 
   it('skips the commission AND referralCode overwrite when the incoming larkUpdatedAt is older than User.commissionSyncedAt', async () => {

@@ -30,10 +30,6 @@ export class LarkSyncService {
       return null;
     }
 
-    const userId = existing
-      ? await this.applyKnownUserEmail(existing.userId, dto)
-      : await this.resolveOrCreateUser(dto);
-
     const incomingUpdatedAt = dto.larkUpdatedAt
       ? new Date(dto.larkUpdatedAt)
       : null;
@@ -41,6 +37,10 @@ export class LarkSyncService {
       existing?.larkUpdatedAt != null &&
       incomingUpdatedAt != null &&
       incomingUpdatedAt < existing.larkUpdatedAt;
+
+    const userId = existing
+      ? await this.applyKnownUserInfo(existing.userId, dto, isStale)
+      : await this.resolveOrCreateUser(dto);
 
     let membership: Membership;
     if (isStale) {
@@ -158,7 +158,17 @@ export class LarkSyncService {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (existingUser) return existingUser.id;
+    if (existingUser) {
+      await this.prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          fullName: dto.fullName.trim(),
+          phoneCountryCode: dto.phoneCountryCode,
+          phoneNo: dto.phoneNo,
+        },
+      });
+      return existingUser.id;
+    }
 
     const hashed = await bcrypt.hash(TEMP_PASSWORD, 10);
     try {
@@ -196,18 +206,27 @@ export class LarkSyncService {
     }
   }
 
-  private async applyKnownUserEmail(
+  // Updates every basic-info field this sync carries for an already-linked larkRecordId
+  // (fullName, phone, email) in one write, gated by the Membership row's own freshness check —
+  // an out-of-order/stale payload must not revert any of these to an older value, matching the
+  // same guarantee already given to tier/status/amount/dates. Always writes when not stale
+  // (rather than first checking what changed) — a no-op update on unchanged fields is harmless,
+  // and checking first would require an extra read this refactor is specifically removing.
+  private async applyKnownUserInfo(
     userId: string,
     dto: LarkMembershipRecordDto,
+    isStale: boolean,
   ): Promise<string> {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-    });
-    if (user.email === dto.email) return userId;
+    if (isStale) return userId;
     try {
       await this.prisma.user.update({
         where: { id: userId },
-        data: { email: dto.email },
+        data: {
+          fullName: dto.fullName.trim(),
+          phoneCountryCode: dto.phoneCountryCode,
+          phoneNo: dto.phoneNo,
+          email: dto.email,
+        },
       });
     } catch (err) {
       if (

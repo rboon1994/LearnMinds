@@ -298,7 +298,10 @@ function MembershipTab({ userId }: { userId: string }) {
 
   useEffect(() => {
     fetch(`${apiUrl}/memberships/admin/users/${userId}`, { headers: authHeaders() })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load memberships: ${r.status}`);
+        return r.json();
+      })
       .then(setRows)
       .catch(() => {});
   }, [userId]);

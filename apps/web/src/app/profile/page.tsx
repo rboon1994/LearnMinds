@@ -72,7 +72,10 @@ export default function ProfilePage() {
 
   useEffect(() => {
     fetch(`${apiUrl}/auth/profile`, { headers: authHeaders() })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load profile: ${r.status}`);
+        return r.json();
+      })
       .then(setProfile)
       .catch(() => {});
   }, []);
