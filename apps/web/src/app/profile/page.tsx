@@ -11,7 +11,7 @@ type Membership = {
   startDate: string;
   endDate: string;
   amount: number;
-  status: 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
+  status: 'PENDING' | 'ACTIVE' | 'EXPIRED';
 };
 
 type Enrollment = {
@@ -37,14 +37,12 @@ const STATUS_LABELS: Record<Membership['status'], string> = {
   PENDING: 'Pending',
   ACTIVE: 'Active',
   EXPIRED: 'Expired',
-  CANCELLED: 'Cancelled',
 };
 
 const STATUS_BADGE_CLASSES: Record<Membership['status'], string> = {
   PENDING: 'bg-amber-100 text-amber-700',
   ACTIVE: 'bg-green-100 text-green-700',
   EXPIRED: 'bg-slate-100 text-slate-600',
-  CANCELLED: 'bg-red-100 text-red-700',
 };
 
 function authHeaders() {

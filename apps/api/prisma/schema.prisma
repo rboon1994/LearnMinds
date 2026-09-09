@@ -77,7 +77,6 @@ enum MembershipStatus {
   PENDING
   ACTIVE
   EXPIRED
-  CANCELLED
 }
 
 // Admin-managed tags for Events (SUPER_ADMIN CRUD via apps/api/src/event-categories) — replaces

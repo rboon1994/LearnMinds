@@ -29,6 +29,7 @@ type Student = {
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   lastSignInAt: string | null;
   _count: { agentConversations: number; lessonViews: number };
+  memberships: { tier: string; status: 'PENDING' | 'ACTIVE' | 'EXPIRED' }[];
 };
 
 type BulkStudentInput = {
@@ -263,6 +264,13 @@ export default function AdminStudentsPage() {
           {student.status}
         </span>
       ),
+    },
+    {
+      header: 'Membership',
+      render: (student) =>
+        student.memberships[0]
+          ? `${student.memberships[0].tier} / ${student.memberships[0].status}`
+          : '—',
     },
     { header: 'Chat History', render: (student) => student._count.agentConversations },
     { header: 'Courses Viewed', render: (student) => student._count.lessonViews },

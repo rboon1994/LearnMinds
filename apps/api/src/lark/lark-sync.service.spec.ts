@@ -84,7 +84,7 @@ describe('LarkSyncService.syncRecord', () => {
     const svc = new LarkSyncService(prisma as any);
 
     const result = await svc.syncRecord(
-      baseRecord({ tier: '非会员', status: '已退会' }),
+      baseRecord({ tier: '非会员', status: '待启用' }),
     );
 
     expect(result).toBeNull();
@@ -178,7 +178,7 @@ describe('LarkSyncService.syncRecord', () => {
     );
   });
 
-  it('tier=非会员 on an existing record forces CANCELLED but never overwrites tier', async () => {
+  it('tier=非会员 on an existing record forces EXPIRED but never overwrites tier', async () => {
     const prisma = makePrismaMock();
     prisma.membership.findUnique.mockResolvedValue({
       id: 'm1',
@@ -196,7 +196,7 @@ describe('LarkSyncService.syncRecord', () => {
     await svc.syncRecord(baseRecord({ tier: '非会员', status: '生效中' }));
 
     const upsertArgs = prisma.membership.upsert.mock.calls[0][0];
-    expect(upsertArgs.update.status).toBe(MembershipStatus.CANCELLED);
+    expect(upsertArgs.update.status).toBe(MembershipStatus.EXPIRED);
     expect(upsertArgs.update.tier).toBeUndefined();
   });
 

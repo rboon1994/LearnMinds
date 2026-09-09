@@ -283,14 +283,13 @@ type MembershipRow = {
   startDate: string;
   endDate: string;
   amount: number;
-  status: 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
+  status: 'PENDING' | 'ACTIVE' | 'EXPIRED';
 };
 
 const MEMBERSHIP_STATUS_LABELS: Record<MembershipRow['status'], string> = {
   PENDING: 'Pending',
   ACTIVE: 'Active',
   EXPIRED: 'Expired',
-  CANCELLED: 'Cancelled',
 };
 
 function MembershipTab({ userId }: { userId: string }) {
