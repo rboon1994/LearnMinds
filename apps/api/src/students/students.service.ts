@@ -4,6 +4,7 @@ import { Prisma, Role, Status } from '@prisma/client';
 import { paginate } from '../common/paginate';
 import { PrismaService } from '../prisma/prisma.service';
 import { TEMP_PASSWORD } from '../common/temp-password';
+import { MembershipsService } from '../memberships/memberships.service';
 import type { StudentRowDto } from './dto/bulk-register-students.dto';
 import type { StudentsQueryDto } from './dto/students-query.dto';
 import type { UpdateStudentDto } from './dto/update-student.dto';
@@ -25,17 +26,32 @@ const selectFields = {
   lastSignInAt: true,
   createdAt: true,
   _count: { select: { agentConversations: true, lessonViews: true } },
+  // Latest Membership record only — enough for the admin list's "Membership" column
+  // (tier/status at a glance) without pulling full history into every row.
+  memberships: {
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: { tier: true, status: true },
+  },
 } as const;
 
 @Injectable()
 export class StudentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private memberships: MembershipsService,
+  ) {}
 
   // Phone search matches phoneCountryCode/phoneNo as separate columns (each via `contains`), not
   // the two concatenated — Prisma can't filter on a computed concat without raw SQL. Covers
   // searching by just the local number or just the country code; doesn't match the exact
   // country-code+number typed as one unbroken string (e.g. "60123456789").
   async findAll(query: StudentsQueryDto) {
+    // Every read path that surfaces Membership data runs this first — same as
+    // MembershipsService.getMembershipsForUser — so the "Membership" column never shows a stale
+    // ACTIVE status past its endDate just because nobody happened to open that student's profile
+    // or admin detail dialog first.
+    await this.memberships.closeExpiredMemberships();
     const search = query.search?.trim();
     const searchDigits = search?.replace(/\D/g, '');
     const where: Prisma.UserWhereInput = {
@@ -67,6 +83,7 @@ export class StudentsService {
   }
 
   async findOne(id: string) {
+    await this.memberships.closeExpiredMemberships();
     return this.prisma.user.findFirstOrThrow({
       where: { id, studentId: { not: null } },
       select: selectFields,

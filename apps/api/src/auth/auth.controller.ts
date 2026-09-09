@@ -48,6 +48,11 @@ export class AuthController {
     return this.authService.getMe(req.user.userId);
   }
 
+  @Get('profile')
+  profile(@Request() req: { user: { userId: string } }) {
+    return this.authService.getProfile(req.user.userId);
+  }
+
   @Patch('change-password')
   changePassword(
     @Request() req: { user: { userId: string } },

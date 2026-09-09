@@ -73,6 +73,12 @@ enum SessionStatus {
   CLOSED
 }
 
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+}
+
 // Admin-managed tags for Events (SUPER_ADMIN CRUD via apps/api/src/event-categories) — replaces
 // a former fixed enum (SALES/MARKETING/OPERATION/HR), seeded as the starting rows in seed.ts.
 model EventCategory {
@@ -116,6 +122,11 @@ model User {
   department         Department?         @relation(fields: [departmentId], references: [id])
   studentId          String?             @unique
   student            Student?            @relation(fields: [studentId], references: [id])
+  referralCode       String?             @unique
+  pendingCommission  Decimal             @default(0)
+  approvedCommission Decimal             @default(0)
+  totalCommission    Decimal             @default(0)
+  commissionSyncedAt DateTime?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   coursesCreated     Course[]
@@ -123,6 +134,8 @@ model User {
   agentConversations AgentConversation[]
   lessonViews        LessonView[]
   eventsCreated      Event[]
+  memberships        Membership[]
+  referredMemberships Membership[]       @relation("MembershipReferrals")
 }
 
 // Thin satellite for the Student "flavor" of a User row (role: STUDENT, tenantId: null) —
@@ -517,4 +530,25 @@ model EventSession {
   @@index([status, endDateTime])
   @@index([startDateTime])
   @@index([country])
+}
+
+model Membership {
+  id               String           @id @default(cuid())
+  larkRecordId     String           @unique
+  larkUpdatedAt    DateTime?
+  userId           String
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier             String
+  startDate        DateTime
+  endDate          DateTime
+  amount           Decimal
+  status           MembershipStatus @default(PENDING)
+  referredByUserId String?
+  referredByUser   User?            @relation("MembershipReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([userId, status])
+  @@index([referredByUserId])
+  @@index([status, endDate])
 }

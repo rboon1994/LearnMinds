@@ -65,7 +65,7 @@ export function UserActivityDialog({ userId, userLabel, isOpen, onClose }: UserA
   );
 }
 
-type Tab = 'chat' | 'courses';
+type Tab = 'chat' | 'courses' | 'membership';
 
 function ActivityContent({ userId }: { userId: string }) {
   const [tab, setTab] = useState<Tab>('chat');
@@ -84,7 +84,7 @@ function ActivityContent({ userId }: { userId: string }) {
   return (
     <div>
       <div className="mb-4 flex gap-2">
-        {(['chat', 'courses'] as const).map((t) => (
+        {(['chat', 'courses', 'membership'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -95,7 +95,7 @@ function ActivityContent({ userId }: { userId: string }) {
                 : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
             }`}
           >
-            {t === 'chat' ? 'Chat History' : 'Course Views'}
+            {t === 'chat' ? 'Chat History' : t === 'courses' ? 'Course Views' : 'Membership'}
           </button>
         ))}
       </div>
@@ -107,6 +107,11 @@ function ActivityContent({ userId }: { userId: string }) {
       {everActivated.has('courses') && (
         <div className={tab === 'courses' ? '' : 'hidden'}>
           <CourseViewsTab userId={userId} />
+        </div>
+      )}
+      {everActivated.has('membership') && (
+        <div className={tab === 'membership' ? '' : 'hidden'}>
+          <MembershipTab userId={userId} />
         </div>
       )}
     </div>
@@ -268,6 +273,52 @@ function CourseViewsTab({ userId }: { userId: string }) {
       keyField="id"
       emptyMessage="No lessons viewed yet."
       pagination={{ page, pageSize: PAGE_SIZE, total: views.total, onPageChange: setPage }}
+    />
+  );
+}
+
+type MembershipRow = {
+  id: string;
+  tier: string;
+  startDate: string;
+  endDate: string;
+  amount: number;
+  status: 'PENDING' | 'ACTIVE' | 'EXPIRED';
+};
+
+const MEMBERSHIP_STATUS_LABELS: Record<MembershipRow['status'], string> = {
+  PENDING: 'Pending',
+  ACTIVE: 'Active',
+  EXPIRED: 'Expired',
+};
+
+function MembershipTab({ userId }: { userId: string }) {
+  const [rows, setRows] = useState<MembershipRow[]>([]);
+
+  useEffect(() => {
+    fetch(`${apiUrl}/memberships/admin/users/${userId}`, { headers: authHeaders() })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load memberships: ${r.status}`);
+        return r.json();
+      })
+      .then(setRows)
+      .catch(() => {});
+  }, [userId]);
+
+  const columns: AdminTableColumn<MembershipRow>[] = [
+    { header: 'Tier', render: (row) => row.tier },
+    { header: 'Start', render: (row) => formatDateTime(row.startDate).split(',')[0] },
+    { header: 'End', render: (row) => formatDateTime(row.endDate).split(',')[0] },
+    { header: 'Amount', render: (row) => `RM ${row.amount.toFixed(2)}` },
+    { header: 'Status', render: (row) => MEMBERSHIP_STATUS_LABELS[row.status] },
+  ];
+
+  return (
+    <AdminTable
+      columns={columns}
+      data={rows}
+      keyField="id"
+      emptyMessage="No Membership history yet."
     />
   );
 }

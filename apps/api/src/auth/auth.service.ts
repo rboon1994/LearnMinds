@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { Role, Status, Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MembershipsService } from '../memberships/memberships.service';
 import type { RegisterDto } from './dto/register.dto';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
+    private memberships: MembershipsService,
   ) {}
 
   async validateUser(email: string, password: string) {
@@ -117,6 +119,49 @@ export class AuthService {
     ]);
 
     return { ...user, navItems, adminFeatures };
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        fullName: true,
+        email: true,
+        studentId: true,
+        referralCode: true,
+        pendingCommission: true,
+        approvedCommission: true,
+        totalCommission: true,
+      },
+    });
+
+    const [memberships, referralCount, enrollments] = await Promise.all([
+      this.memberships.getMembershipsForUser(userId),
+      this.memberships.getReferralCount(userId),
+      user.studentId
+        ? this.prisma.enrollment.findMany({
+            where: { studentId: user.studentId },
+            select: {
+              id: true,
+              expiresAt: true,
+              course: { select: { id: true, title: true } },
+              series: { select: { id: true, name: true } },
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    return {
+      fullName: user.fullName,
+      email: user.email,
+      memberships,
+      enrollments,
+      referralCode: user.referralCode,
+      referralCount,
+      pendingCommission: user.pendingCommission.toNumber(),
+      approvedCommission: user.approvedCommission.toNumber(),
+      totalCommission: user.totalCommission.toNumber(),
+    };
   }
 
   private async getNavItems(
