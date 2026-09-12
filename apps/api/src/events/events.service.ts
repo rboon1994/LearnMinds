@@ -41,9 +41,9 @@ function toSessionResponse<T extends SessionRow>(session: T) {
 // order by a value computed across the sessions relation, so this runs in JS instead.
 // WEBINAR sessions (no date at all) are excluded up front — they can't anchor a sort position,
 // same as an Event with zero sessions.
-function pickAnchorSession<T extends { startDateTime: Date | null; endDateTime: Date | null }>(
-  sessions: T[],
-) {
+function pickAnchorSession<
+  T extends { startDateTime: Date | null; endDateTime: Date | null },
+>(sessions: T[]) {
   const dated = sessions.filter(
     (s): s is T & { startDateTime: Date; endDateTime: Date } =>
       s.startDateTime !== null && s.endDateTime !== null,
@@ -157,7 +157,10 @@ export class EventsService {
     this.lastClosedAt = now;
     try {
       await this.prisma.eventSession.updateMany({
-        where: { endDateTime: { lt: new Date() }, status: { not: SessionStatus.CLOSED } },
+        where: {
+          endDateTime: { lt: new Date() },
+          status: { not: SessionStatus.CLOSED },
+        },
         data: { status: SessionStatus.CLOSED },
       });
     } catch (err) {
@@ -189,7 +192,12 @@ export class EventsService {
         {
           OR: [
             { startDateTime: null },
-            { AND: [{ startDateTime: { lt: end } }, { endDateTime: { gt: start } }] },
+            {
+              AND: [
+                { startDateTime: { lt: end } },
+                { endDateTime: { gt: start } },
+              ],
+            },
           ],
         },
         // WEBINAR (no endDateTime) never time-expires this way — only a manual status change
@@ -205,7 +213,9 @@ export class EventsService {
           ? {}
           : { status: ContentStatus.PUBLISHED }),
         sessions: { some: sessionWhere },
-        ...(query.category ? { categories: { some: { id: query.category } } } : {}),
+        ...(query.category
+          ? { categories: { some: { id: query.category } } }
+          : {}),
       },
       include: {
         categories: true,
@@ -396,7 +406,9 @@ export class EventsService {
   async createSession(eventId: string, dto: CreateSessionDto) {
     await this.prisma.event.findUniqueOrThrow({ where: { id: eventId } });
     const { speakerIds, status, ...rest } = dto;
-    const startDateTime = dto.startDateTime ? new Date(dto.startDateTime) : null;
+    const startDateTime = dto.startDateTime
+      ? new Date(dto.startDateTime)
+      : null;
     const endDateTime = dto.endDateTime ? new Date(dto.endDateTime) : null;
     // A WEBINAR with no status sent must still land on OPEN, not the schema's PLANNING
     // default — assertSessionInvariants below rejects PLANNING for WEBINAR, so create must

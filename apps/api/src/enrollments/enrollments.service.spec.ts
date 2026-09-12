@@ -245,7 +245,11 @@ describe('EnrollmentsService', () => {
         'admin-1',
       );
       expect(results).toEqual([
-        { email: 'nobody@example.com', status: 'skipped', reason: 'Student not found' },
+        {
+          email: 'nobody@example.com',
+          status: 'skipped',
+          reason: 'Student not found',
+        },
       ]);
       expect(prisma.enrollment.create).not.toHaveBeenCalled();
     });
@@ -260,7 +264,11 @@ describe('EnrollmentsService', () => {
       );
       expect(results).toEqual([
         { email: 'jane@example.com', status: 'created' },
-        { email: 'jane@example.com', status: 'skipped', reason: 'Duplicate email in file' },
+        {
+          email: 'jane@example.com',
+          status: 'skipped',
+          reason: 'Duplicate email in file',
+        },
       ]);
       expect(prisma.user.findFirst).toHaveBeenCalledTimes(1);
       expect(prisma.enrollment.create).toHaveBeenCalledTimes(1);
@@ -274,10 +282,15 @@ describe('EnrollmentsService', () => {
         { emails: ['jane@example.com'], courseId: 'course-1' },
         'admin-1',
       );
-      expect(results).toEqual([{ email: 'jane@example.com', status: 'created' }]);
+      expect(results).toEqual([
+        { email: 'jane@example.com', status: 'created' },
+      ]);
       expect(prisma.enrollment.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ studentId: 'student-1', courseId: 'course-1' }),
+          data: expect.objectContaining({
+            studentId: 'student-1',
+            courseId: 'course-1',
+          }),
         }),
       );
     });
@@ -286,14 +299,21 @@ describe('EnrollmentsService', () => {
       const { service, prisma } = buildService();
       prisma.user.findFirst.mockResolvedValue({ studentId: 'student-1' });
       const p2002 = Object.assign(new Error('conflict'), { code: 'P2002' });
-      Object.setPrototypeOf(p2002, Prisma.PrismaClientKnownRequestError.prototype);
+      Object.setPrototypeOf(
+        p2002,
+        Prisma.PrismaClientKnownRequestError.prototype,
+      );
       prisma.enrollment.create.mockRejectedValue(p2002);
       const results = await service.bulkEnroll(
         { emails: ['jane@example.com'], agentId: 'agent-1' },
         'admin-1',
       );
       expect(results).toEqual([
-        { email: 'jane@example.com', status: 'skipped', reason: 'Already enrolled' },
+        {
+          email: 'jane@example.com',
+          status: 'skipped',
+          reason: 'Already enrolled',
+        },
       ]);
     });
   });

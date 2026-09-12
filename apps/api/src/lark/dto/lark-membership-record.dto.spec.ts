@@ -64,14 +64,18 @@ describe('LarkMembershipRecordDto', () => {
 describe('LarkBulkSyncDto', () => {
   it('accepts a batch of 200 records', async () => {
     const dto = plainToInstance(LarkBulkSyncDto, {
-      records: Array.from({ length: 200 }, (_, i) => validRecord({ larkRecordId: `rec${i}` })),
+      records: Array.from({ length: 200 }, (_, i) =>
+        validRecord({ larkRecordId: `rec${i}` }),
+      ),
     });
     expect(await validate(dto)).toHaveLength(0);
   });
 
   it('rejects a batch of 201 records', async () => {
     const dto = plainToInstance(LarkBulkSyncDto, {
-      records: Array.from({ length: 201 }, (_, i) => validRecord({ larkRecordId: `rec${i}` })),
+      records: Array.from({ length: 201 }, (_, i) =>
+        validRecord({ larkRecordId: `rec${i}` }),
+      ),
     });
     const errors = await validate(dto);
     expect(errors.some((e) => e.property === 'records')).toBe(true);

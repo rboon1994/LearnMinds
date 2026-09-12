@@ -8,7 +8,10 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { STATUS_OPTIONS, TIER_OPTIONS } from '../../memberships/membership-labels';
+import {
+  STATUS_OPTIONS,
+  TIER_OPTIONS,
+} from '../../memberships/membership-labels';
 
 export class LarkMembershipRecordDto {
   @IsString()

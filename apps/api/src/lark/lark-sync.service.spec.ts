@@ -236,7 +236,10 @@ describe('LarkSyncService.syncRecord', () => {
     const svc = new LarkSyncService(prisma as any);
 
     await svc.syncRecord(
-      baseRecord({ email: 'stale-new@example.com', larkUpdatedAt: '2026-01-01' }),
+      baseRecord({
+        email: 'stale-new@example.com',
+        larkUpdatedAt: '2026-01-01',
+      }),
     );
 
     expect(prisma.user.update).not.toHaveBeenCalledWith(

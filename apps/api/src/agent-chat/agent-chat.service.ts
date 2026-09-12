@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { readFile } from 'fs/promises';
+import { extname } from 'path';
+import * as XLSX from 'xlsx';
 import { assertAdminCanAccessUser } from '../common/assert-admin-target';
 import { paginate } from '../common/paginate';
 import type { PaginationQueryDto } from '../common/dto/pagination-query.dto';
@@ -24,19 +26,27 @@ const MAX_HISTORY_MESSAGES = 50;
 // every model is charged the same for the file_search tool itself.
 const FILE_SEARCH_COST_PER_CALL = 2.5 / 1000;
 
-// OpenAI file_search-supported extensions (same allowlist as Knowledge Base).
+// OpenAI file_search-supported extensions (same allowlist as Knowledge Base), plus .csv/.xlsx/
+// .xls — none of these three are natively accepted by OpenAI's vector-store attach endpoint
+// (confirmed against the real API: "not supported for retrieval"), so sendMessage() re-encodes
+// them before upload — .csv as a same-content .txt rename, .xlsx/.xls converted to text via the
+// `xlsx` package (installed from SheetJS's own CDN, not the vulnerable/unmaintained npm-registry
+// copy — see package.json). Legacy .ppt is excluded on purpose: only .pptx is supported.
 export const ALLOWED_DOCUMENT_EXTENSIONS = [
   '.pdf',
   '.doc',
   '.docx',
-  '.ppt',
   '.pptx',
   '.txt',
   '.md',
-  '.csv',
   '.json',
   '.html',
+  '.csv',
+  '.xlsx',
+  '.xls',
 ];
+// Extensions that reach OpenAI as a converted/renamed .txt rather than their original bytes.
+const REENCODED_AS_TEXT_EXTENSIONS = new Set(['.csv', '.xlsx', '.xls']);
 // OpenAI vision-supported image formats.
 export const ALLOWED_IMAGE_EXTENSIONS = [
   '.png',
@@ -376,10 +386,7 @@ export class AgentChatService {
           await this.ensureConversationVectorStore(conversationId);
         for (const file of documents) {
           const { key } = this.storage.save(file.path);
-          const openaiFileId = await this.openai.uploadFile(
-            file.path,
-            file.originalname,
-          );
+          const openaiFileId = await this.uploadDocumentToOpenAi(file);
           uploadedOpenAiFileIds.push(openaiFileId);
           await this.openai.attachFileToVectorStore(
             conversationVectorStoreId,
@@ -621,6 +628,34 @@ export class AgentChatService {
     // Multer/Busboy decodes multipart headers as latin1 regardless of the browser's actual
     // UTF-8 filename bytes — re-decoding here undoes that mojibake for non-ASCII filenames.
     return Buffer.from(originalName, 'latin1').toString('utf8');
+  }
+
+  // .csv/.xlsx/.xls all fail OpenAI's vector-store attach step with "not supported for
+  // retrieval" even though the Files API accepts the upload — each is re-encoded as a same-named
+  // .txt before it ever reaches OpenAI. Gated strictly by extension (never by declared MIME type,
+  // which a client can lie about), so this conversion path only ever runs for genuinely
+  // .csv/.xlsx/.xls uploads, exactly like every other extension-based branch in this file.
+  private async uploadDocumentToOpenAi(
+    file: Express.Multer.File,
+  ): Promise<string> {
+    const decodedName = this.decodeFileName(file.originalname);
+    const ext = extname(decodedName).toLowerCase();
+    if (!REENCODED_AS_TEXT_EXTENSIONS.has(ext)) {
+      return this.openai.uploadFile(file.path, file.originalname);
+    }
+    const txtName = decodedName.replace(/\.[^.]+$/, '.txt');
+    if (ext === '.csv') {
+      // Already plain text — OpenAI is rejecting the extension, not the content, so the file's
+      // bytes are uploaded unchanged under the renamed filename.
+      return this.openai.uploadFile(file.path, txtName);
+    }
+    // .xlsx / .xls — a real binary format, so it has to be parsed and converted, not just
+    // renamed. Each sheet becomes a CSV-style text block headed by its sheet name.
+    const workbook = XLSX.readFile(file.path);
+    const text = workbook.SheetNames.map(
+      (name) => `# ${name}\n${XLSX.utils.sheet_to_csv(workbook.Sheets[name])}`,
+    ).join('\n\n');
+    return this.openai.uploadTextContent(text, txtName);
   }
 
   private async cleanupLocalFiles(files: Express.Multer.File[]) {

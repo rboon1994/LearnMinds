@@ -35,7 +35,10 @@ describe('StudentsService', () => {
           user: { create: createSpy },
         }),
     );
-    const svc = new StudentsService(prisma as any, makeMembershipsMock() as any);
+    const svc = new StudentsService(
+      prisma as any,
+      makeMembershipsMock() as any,
+    );
     await svc.bulkRegister([
       {
         fullName: 'Jane',
@@ -60,7 +63,10 @@ describe('StudentsService', () => {
       id: 'user-1',
       status: Status.INACTIVE,
     });
-    const svc = new StudentsService(prisma as any, makeMembershipsMock() as any);
+    const svc = new StudentsService(
+      prisma as any,
+      makeMembershipsMock() as any,
+    );
     await svc.resetPassword('user-1');
     expect(prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({

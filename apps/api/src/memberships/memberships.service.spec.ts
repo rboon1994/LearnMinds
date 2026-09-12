@@ -18,7 +18,10 @@ describe('MembershipsService', () => {
     const svc = new MembershipsService(prisma as any);
     await svc.closeExpiredMemberships();
     expect(prisma.membership.updateMany).toHaveBeenCalledWith({
-      where: { endDate: { lt: expect.any(Date) }, status: MembershipStatus.ACTIVE },
+      where: {
+        endDate: { lt: expect.any(Date) },
+        status: MembershipStatus.ACTIVE,
+      },
       data: { status: MembershipStatus.EXPIRED },
     });
   });

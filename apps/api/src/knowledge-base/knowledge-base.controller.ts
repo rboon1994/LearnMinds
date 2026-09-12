@@ -22,16 +22,16 @@ import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
 import { UpdateKnowledgeBaseDto } from './dto/update-knowledge-base.dto';
 import { KnowledgeBaseService } from './knowledge-base.service';
 
-// OpenAI file_search-supported extensions.
+// OpenAI file_search-supported extensions. Confirmed against the real API, not just the docs —
+// .csv and legacy .ppt are both rejected by the vector-store attach endpoint ("not supported for
+// retrieval") even though they upload fine via the plain Files API.
 const ALLOWED_FILE_EXTENSIONS = [
   '.pdf',
   '.doc',
   '.docx',
-  '.ppt',
   '.pptx',
   '.txt',
   '.md',
-  '.csv',
   '.json',
   '.html',
 ];

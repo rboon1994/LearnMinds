@@ -61,9 +61,24 @@ export class OpenAiService {
 
   async uploadFile(path: string, fileName: string): Promise<string> {
     const buffer = await readFile(path);
+    return this.uploadBuffer(buffer, fileName);
+  }
+
+  // For content generated in-process (e.g. an Excel sheet converted to text) rather than read
+  // from a file already on disk — same endpoint, just skips the readFile step.
+  async uploadTextContent(content: string, fileName: string): Promise<string> {
+    return this.uploadBuffer(Buffer.from(content, 'utf8'), fileName);
+  }
+
+  private async uploadBuffer(
+    buffer: Buffer,
+    fileName: string,
+  ): Promise<string> {
     const form = new FormData();
     form.append('purpose', 'assistants');
-    form.append('file', new Blob([buffer]), fileName);
+    // Buffer's ArrayBufferLike (which includes SharedArrayBuffer) isn't assignable to BlobPart's
+    // ArrayBuffer-only expectation — Uint8Array.from copies into a plain, real ArrayBuffer.
+    form.append('file', new Blob([Uint8Array.from(buffer)]), fileName);
     const res = await this.request('/files', { method: 'POST', body: form });
     const data = (await res.json()) as { id: string };
     return data.id;

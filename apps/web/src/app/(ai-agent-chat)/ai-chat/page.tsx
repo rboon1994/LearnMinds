@@ -27,7 +27,22 @@ function extOf(fileName: string) {
 
 // Mirrors the backend's allowlists/limits in agent-chat.service.ts — kept in sync by hand, same
 // as every other Multer fileFilter in this app (no shared source between client and server).
-const ALLOWED_DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.txt', '.md', '.csv', '.json', '.html'];
+// .csv/.xlsx/.xls are converted to text server-side before OpenAI ever sees them (its
+// vector-store attach endpoint otherwise rejects all three); legacy .ppt is excluded outright —
+// only .pptx is supported, no server-side conversion exists for it.
+const ALLOWED_DOCUMENT_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.pptx',
+  '.txt',
+  '.md',
+  '.json',
+  '.html',
+  '.csv',
+  '.xlsx',
+  '.xls',
+];
 const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
 const MAX_DOCUMENTS_PER_MESSAGE = 5;
 const MAX_IMAGES_PER_MESSAGE = 5;
@@ -522,7 +537,10 @@ export default function AiChatPage() {
                           m.role === 'ASSISTANT' ? (
                             <div ref={(el) => setContentRef(m.id, el)}>{renderMarkdownLite(m.content)}</div>
                           ) : (
-                            m.content
+                            // whitespace-pre-wrap: a plain string node ignores \n by default
+                            // (browsers collapse it to a space) — this is the raw Shift+Enter
+                            // input, not run through renderMarkdownLite's own line-splitting.
+                            <span className="whitespace-pre-wrap">{m.content}</span>
                           )
                         ) : (
                           isStreamingPlaceholder && (

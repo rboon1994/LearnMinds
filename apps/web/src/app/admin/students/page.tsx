@@ -44,7 +44,9 @@ type BulkResult = { email: string; status: 'created' | 'skipped'; reason?: strin
 
 type RowStatus = 'error' | 'duplicate' | 'warning' | 'ok';
 
-type PreviewRow = BulkStudentInput & { status: RowStatus; reason?: string };
+// warningPriority only matters when status === 'warning': 0 = duplicate phone, 1 = .com-only —
+// sorts duplicate-phone warnings above .com warnings in the preview table.
+type PreviewRow = BulkStudentInput & { status: RowStatus; reason?: string; warningPriority?: number };
 
 const STATUS_LABELS: Record<Exclude<RowStatus, 'ok'>, string> = {
   error: 'Error',
@@ -91,6 +93,12 @@ function normalizePhoneNo(countryCode: string, rawPhoneNo: string) {
   return digitsOnly;
 }
 
+// Lightweight approximation of the backend's class-validator @IsEmail() — not byte-for-byte
+// equivalent, just enough to catch the malformed rows (stray spaces, missing @/domain) that would
+// otherwise sail through preview as "ok" and then sink the entire batch at submit time, since the
+// backend rejects the whole array if any one row fails validation.
+const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // Classifies each parsed row against the already-loaded student list and against earlier rows in
 // the same file. Error/Duplicate block the row from being uploaded; Warning is informational only.
 function classifyBulkRows(rows: BulkStudentInput[], existingStudents: Student[]): PreviewRow[] {
@@ -112,6 +120,12 @@ function classifyBulkRows(rows: BulkStudentInput[], existingStudents: Student[])
       return { ...row, status: 'error', reason: `${missing.join(' and ')} missing` };
     }
 
+    // Backend rejects the whole batch (not just this row) if any row's email fails @IsEmail(), so
+    // catch the same malformed rows here where the admin can see which row and why.
+    if (!EMAIL_FORMAT_RE.test(email)) {
+      return { ...row, status: 'error', reason: 'invalid email address format' };
+    }
+
     const emailInDb = dbEmails.has(email);
     const emailInFile = seenEmails.has(email);
     const phoneInDb = dbPhones.has(phone);
@@ -119,17 +133,27 @@ function classifyBulkRows(rows: BulkStudentInput[], existingStudents: Student[])
     seenEmails.add(email);
     seenPhones.add(phone);
 
-    if (emailInDb || emailInFile || phoneInDb || phoneInFile) {
-      const reasons: string[] = [];
-      if (emailInDb) reasons.push('email address already exists in DB');
-      else if (emailInFile) reasons.push('duplicate email address in file');
-      if (phoneInDb) reasons.push('phone number already exists in DB');
-      else if (phoneInFile) reasons.push('duplicate phone number in file');
+    const emailDuplicate = emailInDb || emailInFile;
+    const phoneDuplicate = phoneInDb || phoneInFile;
+    const comIssue = !email.endsWith('.com');
+
+    // Email duplicates block the row (blank/duplicate accounts aren't allowed). Phone duplicates
+    // don't — the DB has no uniqueness constraint on phone, so a duplicate phone is just a
+    // heads-up, not a reason to skip the row.
+    if (emailDuplicate) {
+      const reasons: string[] = [emailInDb ? 'email address already exists in DB' : 'duplicate email address in file'];
+      if (phoneDuplicate) reasons.push(phoneInDb ? 'phone number already exists in DB' : 'duplicate phone number in file');
       return { ...row, status: 'duplicate', reason: reasons.join('; ') };
     }
 
-    if (!email.endsWith('.com')) {
-      return { ...row, status: 'warning', reason: 'email address does not end with .com' };
+    if (phoneDuplicate) {
+      const reasons: string[] = [phoneInDb ? 'phone number already exists in DB' : 'duplicate phone number in file'];
+      if (comIssue) reasons.push('email address does not end with .com');
+      return { ...row, status: 'warning', warningPriority: 0, reason: reasons.join('; ') };
+    }
+
+    if (comIssue) {
+      return { ...row, status: 'warning', warningPriority: 1, reason: 'email address does not end with .com' };
     }
 
     return { ...row, status: 'ok' };
@@ -243,7 +267,11 @@ export default function AdminStudentsPage() {
     previewRows?.filter(
       (row): row is PreviewRow & { status: Exclude<RowStatus, 'ok'> } => row.status !== 'ok',
     ) ?? []
-  ).sort((a, b) => STATUS_SORT_ORDER[a.status] - STATUS_SORT_ORDER[b.status]);
+  ).sort(
+    (a, b) =>
+      STATUS_SORT_ORDER[a.status] - STATUS_SORT_ORDER[b.status] ||
+      (a.warningPriority ?? 0) - (b.warningPriority ?? 0),
+  );
 
   const columns: AdminTableColumn<Student>[] = [
     { header: 'Full Name', render: (student) => student.fullName },

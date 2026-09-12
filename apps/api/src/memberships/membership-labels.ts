@@ -1,7 +1,11 @@
 import { MembershipStatus } from '@prisma/client';
 
 export const NON_MEMBER_TIER = '非会员';
-export const TIER_OPTIONS = [NON_MEMBER_TIER, '10K Silver', '50K Unlimited'] as const;
+export const TIER_OPTIONS = [
+  NON_MEMBER_TIER,
+  '10K Silver',
+  '50K Unlimited',
+] as const;
 // 已退会 removed — Lark's 会员状态 field no longer has this option.
 export const STATUS_OPTIONS = ['待启用', '生效中', '已过期'] as const;
 
