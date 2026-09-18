@@ -7,6 +7,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { useAuth } from '@/contexts/AuthContext';
+import { BRAND_LOGO_SRC } from '@/components/auth/BrandLogo';
 
 export interface NavUser {
   name: string;
@@ -68,12 +69,12 @@ export function Navigation({
               className="flex w-full justify-center"
               aria-label="Expand sidebar"
             >
-              <Image src="/Learnminds-Icon Web.png" alt="LearnMinds" width={35} height={35} priority />
+              <Image src={BRAND_LOGO_SRC.icon} alt="Prominds AI" width={35} height={35} priority />
             </button>
           ) : (
             <>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="overflow-hidden pr-2">
-                <Image src="/Learnminds-Logo-Hor-Web.png" alt="LearnMinds" width={210} height={70} priority />
+                <Image src={BRAND_LOGO_SRC.full} alt="Prominds AI" width={210} height={35} priority />
               </motion.div>
               <button
                 onClick={() => setCollapsed(true)}

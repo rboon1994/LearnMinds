@@ -494,6 +494,16 @@ export default function EditCoursePage() {
           <h2 className="text-lg font-semibold text-slate-900 mb-3">Course</h2>
           <form className="space-y-5" onSubmit={saveMeta} noValidate>
             <Input id="title" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <label htmlFor="showTitleOnLearnPage" className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                id="showTitleOnLearnPage"
+                type="checkbox"
+                checked={showTitleOnLearnPage}
+                onChange={(e) => setShowTitleOnLearnPage(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              Show title on Learn Page
+            </label>
             <Textarea
               id="description"
               label="Description"
@@ -508,16 +518,6 @@ export default function EditCoursePage() {
               onChange={(e) => setThumbnail(e.target.value)}
               placeholder="https://..."
             />
-            <label htmlFor="showTitleOnLearnPage" className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                id="showTitleOnLearnPage"
-                type="checkbox"
-                checked={showTitleOnLearnPage}
-                onChange={(e) => setShowTitleOnLearnPage(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300"
-              />
-              Show title on Learn Page
-            </label>
             <div className="flex gap-3">
               <div className="flex-1 min-w-0">
                 <Input
