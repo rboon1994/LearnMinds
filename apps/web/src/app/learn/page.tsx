@@ -19,6 +19,7 @@ type Course = {
   title: string;
   description: string | null;
   thumbnail: string | null;
+  showTitleOnLearnPage: boolean;
   startDate: string | null;
   endDate: string | null;
   status: 'DRAFT' | 'PUBLISHED';
@@ -91,7 +92,9 @@ function CourseModal({ course, onClose }: { course: Course; onClose: () => void 
         <div className="p-5 space-y-4">
 
           {/* Title */}
-          <h2 className="text-lg font-bold text-slate-900 leading-snug">{course.title}</h2>
+          {course.showTitleOnLearnPage && (
+            <h2 className="text-lg font-bold text-slate-900 leading-snug">{course.title}</h2>
+          )}
 
           {/* Description */}
           {course.description && (
@@ -265,7 +268,9 @@ export default function LearnPage() {
                       )}
                       <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-black/80 to-transparent px-3 pt-8 pb-2">
                         <div className="w-[65%]">
-                          <h3 className="text-2xl font-semibold text-white line-clamp-3 leading-snug">{course.title}</h3>
+                          {course.showTitleOnLearnPage && (
+                            <h3 className="text-2xl font-semibold text-white line-clamp-3 leading-snug">{course.title}</h3>
+                          )}
                           {course.speakers.length > 0 && (
                             <p className="text-base font-medium text-white truncate mt-0.5">
                               {course.speakers.map((s) => s.name).join(', ')}
@@ -321,7 +326,9 @@ export default function LearnPage() {
                       </div>
                       <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-black/80 to-transparent px-3 pt-8 pb-2">
                         <div className="w-[65%]">
-                          <h3 className="text-2xl font-semibold text-white line-clamp-3 leading-snug">{course.title}</h3>
+                          {course.showTitleOnLearnPage && (
+                            <h3 className="text-2xl font-semibold text-white line-clamp-3 leading-snug">{course.title}</h3>
+                          )}
                           {course.speakers.length > 0 && (
                             <p className="text-base font-medium text-white truncate mt-0.5">
                               {course.speakers.map((s) => s.name).join(', ')}

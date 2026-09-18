@@ -43,6 +43,7 @@ type Course = {
   title: string;
   description: string | null;
   thumbnail: string | null;
+  showTitleOnLearnPage: boolean;
   startDate: string | null;
   endDate: string | null;
   seriesId: string | null;
@@ -101,6 +102,7 @@ export default function EditCoursePage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [thumbnail, setThumbnail] = useState('');
+  const [showTitleOnLearnPage, setShowTitleOnLearnPage] = useState(true);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [error, setError] = useState('');
@@ -133,6 +135,7 @@ export default function EditCoursePage() {
         setTitle(data.title);
         setDescription(data.description ?? '');
         setThumbnail(data.thumbnail ?? '');
+        setShowTitleOnLearnPage(data.showTitleOnLearnPage);
         setStartDate(data.startDate?.slice(0, 10) ?? '');
         setEndDate(data.endDate?.slice(0, 10) ?? '');
         setSeriesId(data.seriesId ?? '');
@@ -181,6 +184,7 @@ export default function EditCoursePage() {
         title,
         description: description || null,
         thumbnail: thumbnail || null,
+        showTitleOnLearnPage,
         startDate: startDate || null,
         endDate: endDate || null,
         seriesId: seriesId || null,
@@ -221,6 +225,30 @@ export default function EditCoursePage() {
   const togglePublish = () => toggleStatus(`${apiUrl}/courses/${courseId}`, course.status);
 
   const deleteCourse = () => deleteResource(`${apiUrl}/courses/${courseId}`, () => router.push('/admin/courses'));
+
+  const duplicateCourse = async () => {
+    const res = await fetch(`${apiUrl}/courses`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: course.title,
+        description: course.description || undefined,
+        thumbnail: course.thumbnail || undefined,
+        showTitleOnLearnPage: course.showTitleOnLearnPage,
+        seriesId: course.seriesId || undefined,
+        speakerIds: course.speakers.map((s) => s.id),
+        whatsappNumber: course.whatsappNumber || undefined,
+        whatsappMessage: course.whatsappMessage || undefined,
+      }),
+    });
+    if (!res.ok) {
+      toast.saveFailed();
+      return;
+    }
+    const newCourse: Course = await res.json();
+    toast.saved();
+    router.push(`/admin/courses/${newCourse.id}`);
+  };
 
   const persistLessonOrder = async () => {
     await fetch(`${apiUrl}/courses/${courseId}/lessons/reorder`, {
@@ -314,6 +342,13 @@ export default function EditCoursePage() {
         <>
           <Button variant="secondary" onClick={togglePublish}>
             {course.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={duplicateCourse}
+            leftIcon={<Icon name="copy" className="h-4 w-4 mr-1.5" />}
+          >
+            Duplicate
           </Button>
           <Button
             variant="danger"
@@ -473,6 +508,16 @@ export default function EditCoursePage() {
               onChange={(e) => setThumbnail(e.target.value)}
               placeholder="https://..."
             />
+            <label htmlFor="showTitleOnLearnPage" className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                id="showTitleOnLearnPage"
+                type="checkbox"
+                checked={showTitleOnLearnPage}
+                onChange={(e) => setShowTitleOnLearnPage(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              Show title on Learn Page
+            </label>
             <div className="flex gap-3">
               <div className="flex-1 min-w-0">
                 <Input

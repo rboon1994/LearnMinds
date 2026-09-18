@@ -206,29 +206,32 @@ model CourseSeries {
 }
 
 model Course {
-  id              String        @id @default(cuid())
-  title           String
-  description     String?
-  thumbnail       String?
-  startDate       DateTime?
-  endDate         DateTime?
-  status          ContentStatus @default(DRAFT)
-  tenantId        String?
-  tenant          Tenant?       @relation(fields: [tenantId], references: [id])
-  seriesId        String?
-  series          CourseSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
-  speakers        Speaker[]
+  id                   String        @id @default(cuid())
+  title                String
+  description          String?
+  thumbnail            String?
+  // Some thumbnails already have the course name designed into the image — this lets admins
+  // hide the redundant text title on /learn cards without affecting the course detail page header.
+  showTitleOnLearnPage Boolean       @default(true)
+  startDate            DateTime?
+  endDate              DateTime?
+  status               ContentStatus @default(DRAFT)
+  tenantId             String?
+  tenant               Tenant?       @relation(fields: [tenantId], references: [id])
+  seriesId             String?
+  series               CourseSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  speakers             Speaker[]
   // Powers the "Contact via WhatsApp" button on /learn's locked-course modal — Super-Admin-only,
   // same as Series/Speaker. Button is hidden entirely on /learn when whatsappNumber is unset.
-  whatsappNumber  String?
-  whatsappMessage String?
-  createdById     String?
-  createdBy       User?         @relation(fields: [createdById], references: [id])
-  lessons         Lesson[]
-  files           CourseFile[]
-  enrollments     Enrollment[]
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  whatsappNumber       String?
+  whatsappMessage      String?
+  createdById          String?
+  createdBy            User?         @relation(fields: [createdById], references: [id])
+  lessons              Lesson[]
+  files                CourseFile[]
+  enrollments          Enrollment[]
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   @@index([tenantId])
   @@index([seriesId])

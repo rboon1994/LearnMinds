@@ -1,6 +1,7 @@
 import { ContentStatus } from '@prisma/client';
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsOptional,
@@ -20,6 +21,10 @@ export class CreateCourseDto {
   @IsString()
   @IsOptional()
   thumbnail?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  showTitleOnLearnPage?: boolean;
 
   // Display-only: when the recorded event took place, not used for sorting or "upcoming" logic.
   @IsDateString()
