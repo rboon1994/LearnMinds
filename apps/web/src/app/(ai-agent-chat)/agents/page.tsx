@@ -6,6 +6,7 @@ import { Navigation } from '@/components/layout/Navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/api';
@@ -26,6 +27,7 @@ type Agent = {
   thumbnail: string | null;
   status: 'DRAFT' | 'PUBLISHED';
   hasAccess: boolean;
+  creator: { id: string; name: string } | null;
 };
 
 export default function AgentsPage() {
@@ -33,6 +35,7 @@ export default function AgentsPage() {
   const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSpeakerIds, setSelectedSpeakerIds] = useState<string[]>([]);
   const [startingId, setStartingId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -46,11 +49,26 @@ export default function AgentsPage() {
       .catch(() => {});
   }, []);
 
+  const speakerOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const agent of agents) {
+      if (agent.creator) byId.set(agent.creator.id, agent.creator.name);
+    }
+    return [...byId.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [agents]);
+
   const filteredAgents = useMemo(() => {
-    if (!searchQuery) return agents;
     const q = searchQuery.toLowerCase();
-    return agents.filter((a) => a.name.toLowerCase().includes(q));
-  }, [agents, searchQuery]);
+    return agents.filter((a) => {
+      const matchesSearch = !q || a.name.toLowerCase().includes(q);
+      const matchesSpeaker =
+        selectedSpeakerIds.length === 0 ||
+        (a.creator && selectedSpeakerIds.includes(a.creator.id));
+      return matchesSearch && matchesSpeaker;
+    });
+  }, [agents, searchQuery, selectedSpeakerIds]);
 
   const startChat = async (agentId: string) => {
     setStartingId(agentId);
@@ -82,6 +100,18 @@ export default function AgentsPage() {
                 placeholder="Search…"
               />
             </div>
+            {speakerOptions.length > 0 && (
+              <div className="w-48 sm:w-56 shrink-0">
+                <SearchableSelect
+                  id="agent-speaker-filter"
+                  multiple
+                  value={selectedSpeakerIds}
+                  onChange={setSelectedSpeakerIds}
+                  options={speakerOptions}
+                  placeholder="Filter by speaker…"
+                />
+              </div>
+            )}
             <span className="shrink-0 text-xs sm:text-sm text-slate-500 whitespace-nowrap">
               <span className="font-semibold text-slate-900">{filteredAgents.length}</span>
               {' '}agents

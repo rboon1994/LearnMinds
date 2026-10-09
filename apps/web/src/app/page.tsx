@@ -28,7 +28,9 @@ export default function Home() {
                 >
                   Sign In
                 </Link>
-                <Button variant="gradient" size="md" href="/signup">Get Started</Button>
+                <div className="hidden">
+                  <Button variant="gradient" size="md" href="/signup">Get Started</Button>
+                </div>
               </div>
               {/* Mobile Menu Button */}
               <button
@@ -53,7 +55,9 @@ export default function Home() {
                 <hr className="border-gray-100" />
                 <div className="flex flex-col space-y-3">
                   <Button variant="secondary" size="md" href="/login" className="w-full">Sign In</Button>
-                  <Button variant="gradient" size="md" href="/signup" className="w-full">Get Started</Button>
+                  <div className="hidden">
+                    <Button variant="gradient" size="md" href="/signup" className="w-full">Get Started</Button>
+                  </div>
                 </div>
               </div>
             </div>

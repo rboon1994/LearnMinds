@@ -110,7 +110,9 @@ export default function AiChatPage() {
   // enough — starts as 'uploading' when the message has attachments (network upload + OpenAI
   // file/vector-store sync all happen before generation can start), flips to 'thinking' once the
   // backend confirms that's done, same label as a plain text-only message shows from the start.
-  const [assistantPhase, setAssistantPhase] = useState<'uploading' | 'thinking'>('thinking');
+  const [assistantPhase, setAssistantPhase] = useState<
+    'uploading' | 'thinking' | 'generating_file'
+  >('thinking');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Keyed by message id, pointing at the div renderMarkdownLite renders into — copyMessage reads
@@ -312,6 +314,8 @@ export default function AiChatPage() {
             const event = JSON.parse(line);
             if (event.type === 'status' && event.phase === 'thinking') {
               setAssistantPhase('thinking');
+            } else if (event.type === 'status' && event.phase === 'generating_file') {
+              setAssistantPhase('generating_file');
             } else if (event.type === 'delta') {
               setMessages((prev) =>
                 prev.map((m) => (m.id === tempAssistantId ? { ...m, content: m.content + event.text } : m)),
@@ -545,7 +549,11 @@ export default function AiChatPage() {
                         ) : (
                           isStreamingPlaceholder && (
                             <span className="text-slate-400">
-                              {assistantPhase === 'uploading' ? 'Uploading…' : 'Thinking…'}
+                              {assistantPhase === 'uploading'
+                                ? 'Uploading…'
+                                : assistantPhase === 'generating_file'
+                                  ? 'Generating file…'
+                                  : 'Thinking…'}
                             </span>
                           )
                         )}

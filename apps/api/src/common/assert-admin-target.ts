@@ -26,3 +26,27 @@ export async function assertAdminCanAccessUser(
     throw new NotFoundException();
   }
 }
+
+// Same 404-not-403 rationale as above, but for an admin browsing an AiAgent's chat history
+// instead of a User's. A tenant-scoped Agent (tenantId set) outside the ADMIN's own tenant 404s;
+// a platform-wide Agent (tenantId: null, e.g. findPublishedAgents' shared-agent case) is visible
+// to every ADMIN — the per-conversation user.tenantId filter the caller applies afterward is what
+// keeps a platform-wide Agent's cross-tenant users' chats out of view, not this check.
+export async function assertAdminCanAccessAgent(
+  prisma: PrismaService,
+  actor: { role: Role; tenantId: string | null },
+  agentId: string,
+): Promise<void> {
+  const agent = await prisma.aiAgent.findUnique({
+    where: { id: agentId },
+    select: { id: true, tenantId: true },
+  });
+  if (!agent) throw new NotFoundException();
+  if (
+    actor.role === Role.ADMIN &&
+    agent.tenantId !== null &&
+    agent.tenantId !== actor.tenantId
+  ) {
+    throw new NotFoundException();
+  }
+}

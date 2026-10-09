@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AdminLayout } from '@/components/layout/AdminLayout';
+import { AgentChatHistoryDialog } from '@/components/admin/AgentChatHistoryDialog';
 import { AdminTable } from '@/components/ui/AdminTable';
 import type { AdminTableColumn } from '@/components/ui/AdminTable';
 import { Alert } from '@/components/ui/Alert';
@@ -114,6 +115,8 @@ export default function AdminAiAgentsPage() {
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
+  const [chatHistoryAgent, setChatHistoryAgent] = useState<AiAgent | null>(null);
+
   const [editingAgent, setEditingAgent] = useState<AiAgent | null>(null);
   const [editForm, setEditForm] = useState(emptyAgentForm);
   const [editError, setEditError] = useState('');
@@ -208,6 +211,25 @@ export default function AdminAiAgentsPage() {
       // target in the same row would fight it (AdminTable's onRowClick sits on the whole <tr>,
       // with no stopPropagation). Toggling status happens from inside the Edit dialog instead.
       render: (agent) => <StatusBadge status={agent.status} />,
+    },
+    {
+      header: 'Chat History',
+      render: (agent) => (
+        <button
+          type="button"
+          // stopPropagation: the row itself already opens the Edit dialog on click (see the
+          // Status column comment above) — same pattern as users/page.tsx's "User Log" button.
+          onClick={(e) => {
+            e.stopPropagation();
+            setChatHistoryAgent(agent);
+          }}
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+          aria-label={`View chat history for ${agent.name}`}
+        >
+          <Icon name="eye" className="h-3.5 w-3.5" />
+          View
+        </button>
+      ),
     },
   ];
 
@@ -797,6 +819,15 @@ export default function AdminAiAgentsPage() {
         title={`Delete Model "${deletingModel?.displayName ?? ''}"`}
         userEmail={user?.email ?? ''}
       />
+
+      {chatHistoryAgent && (
+        <AgentChatHistoryDialog
+          agentId={chatHistoryAgent.id}
+          agentLabel={chatHistoryAgent.name}
+          isOpen
+          onClose={() => setChatHistoryAgent(null)}
+        />
+      )}
     </AdminLayout>
   );
 }

@@ -7,15 +7,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { readFile } from 'fs/promises';
-import { extname } from 'path';
+import { randomUUID } from 'crypto';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { dirname, extname, join } from 'path';
 import * as XLSX from 'xlsx';
 import { assertAdminCanAccessUser } from '../common/assert-admin-target';
 import { paginate } from '../common/paginate';
 import type { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { OpenAiService } from '../openai/openai.service';
+import {
+  OpenAiService,
+  isContainerInvalidError,
+} from '../openai/openai.service';
 
 // Fixed message-count cap, not real token counting — simple and bounds both the
 // 400-from-context-overflow risk and runaway cost. Upgrade to a tiktoken-based budget if a
@@ -25,6 +29,32 @@ const MAX_HISTORY_MESSAGES = 50;
 // Flat OpenAI platform rate ($2.50 / 1000 calls) — not a per-model AiAgentModel price, since
 // every model is charged the same for the file_search tool itself.
 const FILE_SEARCH_COST_PER_CALL = 2.5 / 1000;
+
+// code_interpreter's cheapest container tier's 5-minute billing minimum (2026-06 per-minute
+// pricing: $0.03 / 20-minute session at the 1GB tier ⇒ $0.0015/min × 5min floor). Charged once,
+// only on the message that created/rebuilt the container — see codeInterpreterCalls comment in
+// schema.prisma. This UNDER-estimates real cost if the container is reused multiple times within
+// its idle window for longer than 5 minutes total — a known, one-directional approximation (spec
+// "成本考量"), not a bug if a later audit finds OpenAI's bill running higher than this sum.
+const CODE_INTERPRETER_MINIMUM_CHARGE_USD = 0.0075;
+
+// File types code_interpreter is documented to produce (images, CSVs, plus the .xlsx confirmed
+// in production) — anything else falls back to a generic octet-stream, which still downloads
+// fine but loses the browser's native icon/inline-preview for that type. .pdf is deliberately
+// absent: PDF generation is disabled (see CODE_INTERPRETER_DISALLOWED_EXTENSIONS below).
+const CODE_INTERPRETER_OUTPUT_MIME_TYPES: Record<string, string> = {
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.csv': 'text/csv',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+};
+
+// PDF generation is disabled — reportlab's CJK font support proved unreliable across
+// generations for structured reports (see CODE_INTERPRETER_CJK_FONT_HINT in openai.service.ts).
+// That prompt-level instruction alone isn't a hard guarantee the model won't try anyway, so any
+// .pdf a turn produces is dropped here regardless — never downloaded, never attached.
+const CODE_INTERPRETER_DISALLOWED_EXTENSIONS = new Set(['.pdf']);
 
 // OpenAI file_search-supported extensions (same allowlist as Knowledge Base), plus .csv/.xlsx/
 // .xls — none of these three are natively accepted by OpenAI's vector-store attach endpoint
@@ -101,6 +131,7 @@ export class AgentChatService {
         thumbnail: true,
         status: true,
         seriesId: true,
+        creator: { select: { id: true, name: true } },
       },
       orderBy: { name: 'asc' },
     });
@@ -320,9 +351,10 @@ export class AgentChatService {
     images: Express.Multer.File[],
     onDelta: (text: string) => void,
     // Fired once right before the OpenAI call that generates the reply — the frontend uses it to
-    // switch its placeholder bubble from "Uploading…" to "Thinking…", since everything before
-    // this point (upload, OpenAI file sync, vector store indexing) is now genuinely done.
-    onStatus: (phase: 'thinking') => void,
+    // switch its placeholder bubble from "Uploading…" to "Thinking…" (or "Generating file…" if
+    // code_interpreter starts mid-call), since everything before this point (upload, OpenAI file
+    // sync, vector store indexing) is now genuinely done.
+    onStatus: (phase: 'thinking' | 'generating_file') => void,
   ) {
     const trimmedContent = content?.trim() ?? '';
     const allFiles = [...documents, ...images];
@@ -467,34 +499,72 @@ export class AgentChatService {
 
     onStatus('thinking');
 
+    // Every document this conversation has ever uploaded — mounted into code_interpreter's
+    // container whenever there's at least one, so the model can analyze/transform it, not just
+    // search it via file_search.
+    const documentFileIds =
+      await this.getConversationDocumentFileIds(conversationId);
+    const buildRespondParams = (containerId: string | undefined) => ({
+      model: conversation.agent.model.modelId,
+      systemPrompt: conversation.agent.systemPrompt,
+      // instructions is shown to the student in the chat UI ("how to use this agent") —
+      // it's never sent to OpenAI, only systemPrompt is.
+      history: truncated.map((m) => ({
+        role: m.role === 'USER' ? ('user' as const) : ('assistant' as const),
+        content: m.content,
+      })),
+      currentImages,
+      vectorStoreIds: vectorStoreIds.length > 0 ? vectorStoreIds : undefined,
+      // maxTokenLimit is a context/pricing-tier figure (shown next to token prices in the
+      // admin UI), not a per-response completion cap — it isn't forwarded as
+      // OpenAI's max_output_tokens, which is a different, narrower limit.
+      temperature: conversation.agent.model.temperature,
+      codeInterpreter:
+        documentFileIds.length > 0
+          ? { containerId, documentFileIds }
+          : undefined,
+    });
+
     let reply: {
       text: string;
       inputTokens: number;
       outputTokens: number;
       fileSearchCalls: number;
+      codeInterpreterCalls: number;
+      containerId?: string;
     };
     try {
-      reply = await this.openai.respond(
-        {
-          model: conversation.agent.model.modelId,
-          systemPrompt: conversation.agent.systemPrompt,
-          // instructions is shown to the student in the chat UI ("how to use this agent") —
-          // it's never sent to OpenAI, only systemPrompt is.
-          history: truncated.map((m) => ({
-            role:
-              m.role === 'USER' ? ('user' as const) : ('assistant' as const),
-            content: m.content,
-          })),
-          currentImages,
-          vectorStoreIds:
-            vectorStoreIds.length > 0 ? vectorStoreIds : undefined,
-          // maxTokenLimit is a context/pricing-tier figure (shown next to token prices in the
-          // admin UI), not a per-response completion cap — it isn't forwarded as
-          // OpenAI's max_output_tokens, which is a different, narrower limit.
-          temperature: conversation.agent.model.temperature,
-        },
-        onDelta,
-      );
+      try {
+        reply = await this.openai.respond(
+          buildRespondParams(
+            conversation.codeInterpreterContainerId ?? undefined,
+          ),
+          onDelta,
+          () => onStatus('generating_file'),
+        );
+      } catch (err) {
+        // Only a stale/expired containerId is retried, and only by rebuilding via `auto` — a
+        // rate-limit/timeout/server error here must fall straight through to the outer catch
+        // instead of being mistaken for a container problem (that would trigger an unnecessary,
+        // separately-billed container rebuild for a failure that had nothing to do with it).
+        const errInfo = err as { status?: number; openAiMessage?: string };
+        if (
+          conversation.codeInterpreterContainerId &&
+          isContainerInvalidError(errInfo)
+        ) {
+          this.logger.warn(
+            `Code interpreter container ${conversation.codeInterpreterContainerId} invalid, rebuilding`,
+            err as Error,
+          );
+          reply = await this.openai.respond(
+            buildRespondParams(undefined),
+            onDelta,
+            () => onStatus('generating_file'),
+          );
+        } else {
+          throw err;
+        }
+      }
     } catch (err) {
       this.logger.error('OpenAI failed to respond', err as Error);
       try {
@@ -517,9 +587,58 @@ export class AgentChatService {
       }
       await this.cleanupOpenAiFiles(uploadedOpenAiFileIds);
       await this.cleanupLocalFiles(allFiles);
+      // A container that failed outright (rather than succeeding-then-losing-a-CAS-race) never
+      // hands back an id we could clean up — the request itself failed before returning one.
+      // Left to OpenAI's own idle timeout, same bounded/self-expiring reasoning as the CAS-loser
+      // cleanup path in writeCodeInterpreterContainerId above.
       throw new BadGatewayException(
         'The AI agent failed to respond — please try again',
       );
+    }
+
+    // Persist the container id this turn used/created via the same CAS path regardless of
+    // whether it came from a first-time create, a plain reuse, or an invalid-container rebuild —
+    // one write path, no separate branches (spec "数据流" step 7). Skipped entirely when this
+    // turn never touched code_interpreter at all.
+    if (reply.containerId) {
+      await this.writeCodeInterpreterContainerId(
+        conversationId,
+        conversation.codeInterpreterContainerId,
+        reply.containerId,
+      );
+    }
+
+    // Download every file code_interpreter produced this turn (not the ones we uploaded as
+    // input) before creating the assistant message, so a download failure rolls back cleanly the
+    // same way an OpenAI-call failure does above, rather than leaving a message that references a
+    // file nobody could fetch.
+    let generatedAttachments: AttachmentInput[] = [];
+    if (reply.containerId && reply.codeInterpreterCalls > 0) {
+      try {
+        generatedAttachments = await this.downloadCodeInterpreterOutputFiles(
+          reply.containerId,
+        );
+      } catch (err) {
+        this.logger.error(
+          'Failed to download code_interpreter output file',
+          err as Error,
+        );
+        try {
+          await this.prisma.agentMessage.delete({
+            where: { id: userMessage.id },
+          });
+        } catch {
+          // Best-effort rollback.
+        }
+        if (!hadVectorStoreBefore) {
+          await this.cleanupVectorStore(conversationVectorStoreId);
+        }
+        await this.cleanupOpenAiFiles(uploadedOpenAiFileIds);
+        await this.cleanupLocalFiles(allFiles);
+        throw new BadGatewayException(
+          'The AI agent failed to respond — please try again',
+        );
+      }
     }
 
     // Token prices are $ per 1M tokens (see AiAgentModel.inputTokenPrice/outputTokenPrice);
@@ -530,10 +649,13 @@ export class AgentChatService {
         conversation.agent.model.inputTokenPrice.toNumber() +
       (reply.outputTokens / 1_000_000) *
         conversation.agent.model.outputTokenPrice.toNumber() +
-      reply.fileSearchCalls * FILE_SEARCH_COST_PER_CALL;
+      reply.fileSearchCalls * FILE_SEARCH_COST_PER_CALL +
+      (reply.codeInterpreterCalls > 0
+        ? CODE_INTERPRETER_MINIMUM_CHARGE_USD
+        : 0);
 
-    // include: { attachments: true } here too (always empty — assistant messages never have
-    // attachments) so the shape matches fullUserMessage/findMessages exactly; the frontend's
+    // include: { attachments: true } here too (always empty unless code_interpreter produced a
+    // file this turn) so the shape matches fullUserMessage/findMessages exactly; the frontend's
     // Message type treats `attachments` as always-present.
     const assistantMessage = await this.prisma.agentMessage.create({
       data: {
@@ -543,7 +665,9 @@ export class AgentChatService {
         inputTokens: reply.inputTokens,
         outputTokens: reply.outputTokens,
         fileSearchCalls: reply.fileSearchCalls,
+        codeInterpreterCalls: reply.codeInterpreterCalls,
         costUsd,
+        attachments: { createMany: { data: generatedAttachments } },
       },
       include: { attachments: true },
     });
@@ -615,6 +739,108 @@ export class AgentChatService {
       },
       pagination,
     );
+  }
+
+  // Admin read of every conversation held with a given Agent, across every user who has one —
+  // the "who's using this Agent" view (tenant/existence check on the Agent itself is the
+  // caller's responsibility, see assertAdminCanAccessAgent). For ADMIN, conversations are also
+  // filtered by the conversation owner's tenantId: a platform-wide Agent (tenantId: null) is
+  // visible to every ADMIN, but its cross-tenant users' chat history must not leak through just
+  // because the Agent itself has no tenant restriction. SUPER_ADMIN sees every user's threads.
+  findConversationsForAgentAsAdmin(
+    agentId: string,
+    actor: { role: Role; tenantId: string | null },
+    pagination: PaginationQueryDto,
+  ) {
+    return paginate(
+      this.prisma.agentConversation,
+      {
+        where: {
+          agentId,
+          user:
+            actor.role === Role.ADMIN
+              ? { tenantId: actor.tenantId }
+              : undefined,
+        },
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          updatedAt: true,
+          user: { select: { id: true, fullName: true, email: true } },
+          _count: { select: { messages: true } },
+        },
+      },
+      pagination,
+    );
+  }
+
+  // Same ownership-chain-in-the-query approach as findMessagesForUserAsAdmin: a conversationId
+  // that doesn't belong to this agentId (or, for ADMIN, whose owner isn't in-tenant) simply
+  // matches zero rows rather than throwing.
+  findMessagesForAgentAsAdmin(
+    agentId: string,
+    conversationId: string,
+    actor: { role: Role; tenantId: string | null },
+    pagination: PaginationQueryDto,
+  ) {
+    return paginate(
+      this.prisma.agentMessage,
+      {
+        where: {
+          conversation: {
+            id: conversationId,
+            agentId,
+            user:
+              actor.role === Role.ADMIN
+                ? { tenantId: actor.tenantId }
+                : undefined,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          role: true,
+          content: true,
+          createdAt: true,
+          attachments: true,
+        },
+      },
+      pagination,
+    );
+  }
+
+  // Admin export source: every message ever sent in every conversation held with this Agent, in
+  // one unpaginated fetch (the whole history becomes one CSV, not a browsing page) — same tenant
+  // scoping as findConversationsForAgentAsAdmin. Ordered conversation-then-time so a
+  // conversation's messages stay grouped and chronological within the file.
+  findAllMessagesForAgentAsAdmin(
+    agentId: string,
+    actor: { role: Role; tenantId: string | null },
+  ) {
+    return this.prisma.agentMessage.findMany({
+      where: {
+        conversation: {
+          agentId,
+          user:
+            actor.role === Role.ADMIN
+              ? { tenantId: actor.tenantId }
+              : undefined,
+        },
+      },
+      orderBy: [{ conversationId: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        role: true,
+        content: true,
+        createdAt: true,
+        conversation: {
+          select: {
+            title: true,
+            user: { select: { fullName: true, email: true } },
+          },
+        },
+      },
+    });
   }
 
   private loadConversation(conversationId: string, userId: string) {
@@ -720,5 +946,100 @@ export class AgentChatService {
       where: { id: conversationId },
     });
     return conversation.vectorStoreId as string;
+  }
+
+  // Same lazy-create + DB-conditional-write race guard as ensureConversationVectorStore just
+  // above, generalized to also cover *replacing* an existing (invalid) id, not only filling a
+  // null one — every write to codeInterpreterContainerId, whether from a first-time container
+  // creation or a rebuild-after-invalid, must go through this one path (spec: "数据流" step 7).
+  private async writeCodeInterpreterContainerId(
+    conversationId: string,
+    previousValue: string | null,
+    newContainerId: string,
+  ): Promise<string> {
+    const { count } = await this.prisma.agentConversation.updateMany({
+      where: { id: conversationId, codeInterpreterContainerId: previousValue },
+      data: { codeInterpreterContainerId: newContainerId },
+    });
+    if (count === 1) return newContainerId;
+    // Lost the race — a concurrent request already wrote a different id. This turn's reply and
+    // any AgentAttachment it produced already succeeded and are unaffected; only the id used for
+    // the *next* turn changes. Delete this turn's own container to avoid an orphan — a failed
+    // delete here is bounded/self-expiring (OpenAI's own idle timeout reclaims it), not worth
+    // retrying.
+    try {
+      await this.openai.deleteContainer(newContainerId);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete redundant OpenAI container ${newContainerId}`,
+        err as Error,
+      );
+    }
+    const current = await this.prisma.agentConversation.findUniqueOrThrow({
+      where: { id: conversationId },
+      select: { codeInterpreterContainerId: true },
+    });
+    return current.codeInterpreterContainerId!;
+  }
+
+  // Every document this conversation has ever uploaded (images are excluded — they never get an
+  // openaiFileId, per the AgentAttachment model comment). Re-mounted in full on every container
+  // create/rebuild — a known, documented trade-off in the spec's "已知取舍", not an oversight.
+  private async getConversationDocumentFileIds(
+    conversationId: string,
+  ): Promise<string[]> {
+    const rows = await this.prisma.agentAttachment.findMany({
+      where: {
+        message: { conversationId },
+        type: 'DOCUMENT',
+        openaiFileId: { not: null },
+      },
+      select: { openaiFileId: true },
+    });
+    return rows.map((r) => r.openaiFileId!);
+  }
+
+  // Downloads every file code_interpreter produced this turn (source !== 'user' filters out the
+  // ones we mounted as input). Anything in CODE_INTERPRETER_DISALLOWED_EXTENSIONS (.pdf) is
+  // skipped entirely — never downloaded, never attached — regardless of what the model tried to
+  // produce; the system prompt tells it not to, but this is the hard backstop.
+  private async downloadCodeInterpreterOutputFiles(
+    containerId: string,
+  ): Promise<AttachmentInput[]> {
+    const attachments: AttachmentInput[] = [];
+    const containerFiles = await this.openai.listContainerFiles(containerId);
+    const produced = containerFiles.filter((f) => f.source !== 'user');
+    for (const file of produced) {
+      const fileName = file.path.split('/').pop() ?? file.id;
+      const ext = extname(fileName);
+      if (CODE_INTERPRETER_DISALLOWED_EXTENSIONS.has(ext)) {
+        this.logger.warn(
+          `code_interpreter produced a disallowed file type (${ext}) in container ${containerId} — dropped, not downloaded`,
+        );
+        continue;
+      }
+      const buffer = await this.openai.downloadContainerFile(
+        containerId,
+        file.id,
+      );
+      const diskPath = join(
+        this.storage.root,
+        'agent-attachments',
+        `${randomUUID()}${ext}`,
+      );
+      await mkdir(dirname(diskPath), { recursive: true });
+      await writeFile(diskPath, buffer);
+      const { key } = this.storage.save(diskPath);
+      attachments.push({
+        type: 'DOCUMENT',
+        fileName,
+        fileUrl: key,
+        mimeType:
+          CODE_INTERPRETER_OUTPUT_MIME_TYPES[ext] ?? 'application/octet-stream',
+        sizeBytes: buffer.byteLength,
+        openaiFileId: null,
+      });
+    }
+    return attachments;
   }
 }

@@ -16,6 +16,7 @@ import { Role } from '@prisma/client';
 import { extname } from 'path';
 import type { Response } from 'express';
 import { RequireFeature } from '../auth/decorators/require-feature.decorator';
+import { buildContentDispositionHeader } from '../common/content-disposition';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AdminFeatureGuard } from '../auth/guards/admin-feature.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -121,7 +122,7 @@ export class FilesController {
     res.setHeader('Content-Type', mimeType);
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(fileName)}"`,
+      buildContentDispositionHeader('attachment', fileName),
     );
     res.sendFile(path);
   }

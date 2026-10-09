@@ -20,7 +20,12 @@ import { extname } from 'path';
 import type { Response } from 'express';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { assertAdminCanAccessUser } from '../common/assert-admin-target';
+import { buildAgentChatExportCsv } from './agent-chat-export';
+import {
+  assertAdminCanAccessAgent,
+  assertAdminCanAccessUser,
+} from '../common/assert-admin-target';
+import { buildContentDispositionHeader } from '../common/content-disposition';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { multerDiskStorage } from '../storage/storage.multer';
@@ -137,7 +142,7 @@ export class AgentChatController {
   // Streamed as newline-delimited JSON, not JSON-over-HTTP — each line is one
   // `{type: 'status'|'delta'|'done'|'error', ...}` event, so the frontend can render the reply
   // bubble-by-bubble as OpenAI generates it instead of waiting for the full completion, and show
-  // "Uploading…" separately from "Thinking…" for messages with attachments.
+  // "Uploading…" / "Thinking…" / "Generating file…" as appropriate.
   // Pre-stream failures (validation, ownership, attachment upload) still throw normally and are
   // reported as a `type: 'error'` line rather than an HTTP error status, since the response
   // headers (200) are already committed the moment the first byte is written.
@@ -160,7 +165,7 @@ export class AgentChatController {
         files?.images ?? [],
         (text: string) =>
           res.write(`${JSON.stringify({ type: 'delta', text })}\n`),
-        (phase: 'thinking') =>
+        (phase: 'thinking' | 'generating_file') =>
           res.write(`${JSON.stringify({ type: 'status', phase })}\n`),
       );
       res.write(`${JSON.stringify({ type: 'done', ...result })}\n`);
@@ -208,6 +213,73 @@ export class AgentChatController {
     return this.svc.findMessagesForUserAsAdmin(userId, conversationId, query);
   }
 
+  // Admin view of "who's using this Agent" — every conversation held with a given Agent, across
+  // every user, rather than starting from a single known user. Tenant scoping is handled in two
+  // layers: assertAdminCanAccessAgent gates the Agent itself, then the service additionally
+  // scopes conversations by the owning user's tenantId for ADMIN (never for SUPER_ADMIN) — see
+  // findConversationsForAgentAsAdmin's comment for why that second layer is needed.
+  @Get('admin/agents/:agentId/conversations')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async findConversationsForAgent(
+    @Request() req: AuthReq,
+    @Param('agentId') agentId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    await assertAdminCanAccessAgent(this.prisma, req.user, agentId);
+    return this.svc.findConversationsForAgentAsAdmin(
+      agentId,
+      req.user,
+      query,
+    );
+  }
+
+  // Whole-history export as CSV — unpaginated, so it must stay registered before the
+  // :conversationId param route below (a literal segment can otherwise lose to an adjacent param
+  // route depending on registration order).
+  @Get('admin/agents/:agentId/conversations/export')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async exportConversationsForAgent(
+    @Request() req: AuthReq,
+    @Param('agentId') agentId: string,
+    @Res() res: Response,
+  ) {
+    await assertAdminCanAccessAgent(this.prisma, req.user, agentId);
+    const agent = await this.prisma.aiAgent.findUniqueOrThrow({
+      where: { id: agentId },
+      select: { name: true },
+    });
+    const rows = await this.svc.findAllMessagesForAgentAsAdmin(
+      agentId,
+      req.user,
+    );
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      buildContentDispositionHeader(
+        'attachment',
+        `${agent.name}-chat-export.csv`,
+      ),
+    );
+    res.send(buildAgentChatExportCsv(rows));
+  }
+
+  @Get('admin/agents/:agentId/conversations/:conversationId/messages')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async findMessagesForAgent(
+    @Request() req: AuthReq,
+    @Param('agentId') agentId: string,
+    @Param('conversationId') conversationId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    await assertAdminCanAccessAgent(this.prisma, req.user, agentId);
+    return this.svc.findMessagesForAgentAsAdmin(
+      agentId,
+      conversationId,
+      req.user,
+      query,
+    );
+  }
+
   // Authenticated download, ownership-checked in the service — never a bare static file
   // (mirrors CourseFilesController's :id/download rationale). `inline` (not `attachment`) so
   // images/PDFs open in the browser for "click to view" instead of forcing a download.
@@ -224,7 +296,7 @@ export class AgentChatController {
     res.setHeader('Content-Type', mimeType);
     res.setHeader(
       'Content-Disposition',
-      `inline; filename="${encodeURIComponent(fileName)}"`,
+      buildContentDispositionHeader('attachment', fileName),
     );
     res.sendFile(path);
   }

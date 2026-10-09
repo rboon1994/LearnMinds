@@ -426,6 +426,11 @@ model AgentConversation {
   // isolated per-conversation so an attached file never leaks into a different thread (even a
   // New Chat with the same agent), and never touches the shared AiAgent-level KnowledgeBase.
   vectorStoreId String?
+  // Same lazy-create pattern as vectorStoreId above. No expiry field: OpenAI's container expiry
+  // is idle-based server-side, so a locally-cached expiry timestamp would drift from reality.
+  // AgentChatService optimistically reuses this id and rebuilds on a container-invalid error
+  // instead (see openai.service.ts respond()).
+  codeInterpreterContainerId String?
   messages      AgentMessage[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -450,6 +455,11 @@ model AgentMessage {
   // hardcoded in agent-chat.service.ts — not a configurable AiAgentModel price like token
   // costs, since it's a flat platform-wide rate, not model-specific). Already folded into costUsd.
   fileSearchCalls Int?
+  // Count of code_interpreter_call output items this turn, same accounting style as
+  // fileSearchCalls. OpenAI doesn't expose per-call container duration, so costUsd only charges
+  // the 5-minute-minimum container price once, on the message that created/rebuilt the
+  // container — see CODE_INTERPRETER_MINIMUM_CHARGE_USD in agent-chat.service.ts.
+  codeInterpreterCalls Int?
   costUsd         Decimal?          @db.Decimal(10, 6)
   createdAt       DateTime          @default(now())
 

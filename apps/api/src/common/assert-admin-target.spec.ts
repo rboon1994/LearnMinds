@@ -1,6 +1,9 @@
 import { NotFoundException } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { assertAdminCanAccessUser } from './assert-admin-target';
+import {
+  assertAdminCanAccessAgent,
+  assertAdminCanAccessUser,
+} from './assert-admin-target';
 
 // This gate is shared by every admin-reads-another-user's-data endpoint (agent-chat admin
 // routes, course lesson-views admin route). It's the one place the tenant-enumeration fix and
@@ -76,6 +79,70 @@ describe('assertAdminCanAccessUser', () => {
         prisma as any,
         { role: Role.SUPER_ADMIN, tenantId: null },
         'student-user-1',
+      ),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('assertAdminCanAccessAgent', () => {
+  function buildPrisma(agent: { id: string; tenantId: string | null } | null) {
+    return { aiAgent: { findUnique: jest.fn().mockResolvedValue(agent) } };
+  }
+
+  it('404s when the target agent does not exist', async () => {
+    const prisma = buildPrisma(null);
+    await expect(
+      assertAdminCanAccessAgent(
+        prisma as any,
+        { role: Role.SUPER_ADMIN, tenantId: null },
+        'missing-agent',
+      ),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('404s for ADMIN targeting an agent scoped to a different tenant', async () => {
+    const prisma = buildPrisma({ id: 'agent-1', tenantId: 'tenant-b' });
+    await expect(
+      assertAdminCanAccessAgent(
+        prisma as any,
+        { role: Role.ADMIN, tenantId: 'tenant-a' },
+        'agent-1',
+      ),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('allows ADMIN to access an agent scoped to their own tenant', async () => {
+    const prisma = buildPrisma({ id: 'agent-1', tenantId: 'tenant-a' });
+    await expect(
+      assertAdminCanAccessAgent(
+        prisma as any,
+        { role: Role.ADMIN, tenantId: 'tenant-a' },
+        'agent-1',
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  // Platform-wide agent (tenantId: null) — visible to every ADMIN. Cross-tenant user isolation
+  // for its conversations is enforced separately by the caller's per-conversation tenant filter,
+  // not by this check.
+  it('allows ADMIN to access a platform-wide agent (tenantId: null)', async () => {
+    const prisma = buildPrisma({ id: 'agent-1', tenantId: null });
+    await expect(
+      assertAdminCanAccessAgent(
+        prisma as any,
+        { role: Role.ADMIN, tenantId: 'tenant-a' },
+        'agent-1',
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('allows SUPER_ADMIN to access an agent scoped to any tenant', async () => {
+    const prisma = buildPrisma({ id: 'agent-1', tenantId: 'tenant-b' });
+    await expect(
+      assertAdminCanAccessAgent(
+        prisma as any,
+        { role: Role.SUPER_ADMIN, tenantId: null },
+        'agent-1',
       ),
     ).resolves.toBeUndefined();
   });
