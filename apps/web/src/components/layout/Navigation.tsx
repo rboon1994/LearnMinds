@@ -28,7 +28,7 @@ export function Navigation({
   onLogout,
   mobileOpen = false,
   onMobileClose,
-  showUpgradeCard = true,
+  showUpgradeCard = false,
 }: NavigationProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
