@@ -40,3 +40,16 @@ docs/superpowers/plans/
 
 # Ruflo runtime state (daemon pid, metrics — changes every session)
 .claude-flow/
+
+# Ruflo / ruvector runtime state (plugin uninstalled)
+*.db
+.claude/proven-config.json
+.claude/.proven-config-version
+
+# planning-with-files session scratch
+/task_plan.md
+/progress.md
+/findings.md
+
+# Claude Code worktrees
+.claude/worktrees/
